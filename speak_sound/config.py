@@ -10,9 +10,7 @@ class Settings:
     microphone: str = ""
     receive_device: str = ""
     output_device: str = ""
-    asr_device: str = "cpu"
-    tts: str = "openjtalk"
-    voicevox_speaker: int = 1
+    receive_only: bool = True
     push_to_talk: bool = True
     screen: int = 0
     font_size: int = 28

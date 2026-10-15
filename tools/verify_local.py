@@ -18,8 +18,8 @@ def main():
         available = devices(p)
     results = {"devices": {kind: [name for name, _ in values] for kind, values in available.items()}}
     model = LocalModels(Settings(), print)
-    results["zh_to_ja"] = model.translate("队友在右边，一起走吧。", "zho_Hans", "jpn_Jpan")
-    results["ja_to_zh"] = model.translate("敵が右にいます。一緒に行こう。", "jpn_Jpan", "zho_Hans")
+    results["zh_to_ja"] = model.translate("队友在右边，一起走吧。", "zh", "ja")
+    results["ja_to_zh"] = model.translate("敵が右にいます。一緒に行こう。", "ja", "zh")
     samples, rate = model.synthesize("敵が右にいます。一緒に行こう。")
     assert samples.size > rate // 2 and np.max(np.abs(samples)) > .001, "TTS returned silent audio"
     pcm = (np.clip(samples, -1, 1) * 32767).astype(np.int16).tobytes()

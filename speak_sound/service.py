@@ -7,6 +7,7 @@ import pyaudiowpatch as pa
 
 from .audio import Capture, play, resolve
 from .models import LocalModels
+from .routing import require_open_output
 
 
 class Events(QObject):
@@ -37,18 +38,20 @@ class Service:
             if self.stop.is_set():
                 return
             p = pa.PyAudio()
-            mic = resolve(p, "microphone", self.settings.microphone)
             receive = resolve(p, "receive", self.settings.receive_device)
-            output = resolve(p, "output", self.settings.output_device)
-            if not any(marker in self.settings.output_device.lower() for marker in ("cable", "voicemeeter", "virtual")):
-                raise ValueError("发送输出请选择虚拟音频线的播放端（例如 CABLE Input），避免把语音送往扬声器")
+            mic = output = None
+            if not self.settings.receive_only:
+                mic = resolve(p, "microphone", self.settings.microphone)
+                output = resolve(p, "output", self.settings.output_device)
+                require_open_output(self.settings.output_device)
             incoming, outgoing = queue.Queue(maxsize=2), queue.Queue(maxsize=2)
             captures = [
                 Capture(p, receive, incoming, self.stop, lambda: True, self.settings, self.events.status.emit),
-                Capture(p, mic, outgoing, self.stop,
-                        lambda: not self.sending.is_set() and (not self.settings.push_to_talk or self.talking.is_set()),
-                        self.settings, self.events.status.emit),
             ]
+            if not self.settings.receive_only:
+                captures.append(Capture(p, mic, outgoing, self.stop,
+                    lambda: not self.sending.is_set() and (not self.settings.push_to_talk or self.talking.is_set()),
+                    self.settings, self.events.status.emit))
 
             def worker(q, direction):
                 while not self.stop.is_set():
@@ -62,8 +65,8 @@ class Service:
                         if not original or self.stop.is_set():
                             continue
                         translated = models.translate(original,
-                            "jpn_Jpan" if direction == "in" else "zho_Hans",
-                            "zho_Hans" if direction == "in" else "jpn_Jpan")
+                            "ja" if direction == "in" else "zh",
+                            "zh" if direction == "in" else "ja")
                         if self.stop.is_set() or not translated:
                             continue
                         self.events.transcript.emit(direction, original, translated, time.monotonic() - started)
@@ -80,12 +83,16 @@ class Service:
                     except Exception as exc:
                         self.events.status.emit(f"处理失败：{exc}")
 
-            children = captures + [threading.Thread(target=worker, args=(incoming, "in"), daemon=True),
-                                    threading.Thread(target=worker, args=(outgoing, "out"), daemon=True)]
+            children = captures + [threading.Thread(target=worker, args=(incoming, "in"), daemon=True)]
+            if not self.settings.receive_only:
+                children.append(threading.Thread(target=worker, args=(outgoing, "out"), daemon=True))
             for child in children:
                 child.start()
             self.events.active.emit(True)
-            self.events.status.emit("翻译运行中 · 按住 F8 说中文" if self.settings.push_to_talk else "翻译运行中 · 自动检测中文讲话")
+            if self.settings.receive_only:
+                self.events.status.emit("仅接收字幕运行中 · 日语 → 中文")
+            else:
+                self.events.status.emit("翻译运行中 · 按住 F8 说中文" if self.settings.push_to_talk else "翻译运行中 · 自动检测中文讲话")
             self.stop.wait()
         except Exception as exc:
             self.events.status.emit(f"无法启动：{exc}")

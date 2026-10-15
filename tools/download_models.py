@@ -77,19 +77,20 @@ def main():
                       local_dir=ROOT / "models" / "whisper",
                       allow_patterns=["*.json", "vocabulary.*", "README.md", "LICENSE*"])
     download_weights(whisper_repo, ROOT / "models" / "whisper")
-    print("Downloading quantized NLLB translation model…", flush=True)
-    snapshot_download("JustFrederik/nllb-200-distilled-600M-ct2-int8",
-                      revision="302d78f00e6fdb50a1064059df7c392b735e9d05",
-                      local_dir=ROOT / "models" / "translation",
+    print("Downloading MIT-licensed M2M100 translation model…", flush=True)
+    snapshot_download("jncraton/m2m100_418M-ct2-int8",
+                      revision="7c1b2620a4e58dacecbd8bf89cfd6da7eb9eb7b0",
+                      local_dir=ROOT / "models" / "m2m100",
                       allow_patterns=["*.json", "*.txt", "README.md", "LICENSE*"])
-    download_weights("JustFrederik/nllb-200-distilled-600M-ct2-int8", ROOT / "models" / "translation",
-                     revision="302d78f00e6fdb50a1064059df7c392b735e9d05",
-                     expected_hash="ed1beaf75134de7505315a5223162f56acff397eff6b50638a500d3936fe707b")
-    snapshot_download("facebook/nllb-200-distilled-600M", local_dir=ROOT / "models" / "tokenizer",
+    download_weights("jncraton/m2m100_418M-ct2-int8", ROOT / "models" / "m2m100",
+                     revision="7c1b2620a4e58dacecbd8bf89cfd6da7eb9eb7b0")
+    snapshot_download("facebook/m2m100_418M", revision="55c2e61bbf05dfb8d7abccdc3fae6fc8512fd636",
+                      local_dir=ROOT / "models" / "m2m100-tokenizer",
                       allow_patterns=["config.json", "generation_config.json", "tokenizer_config.json",
                                       "special_tokens_map.json", "README.md", "LICENSE*"])
-    for filename in ("sentencepiece.bpe.model", "tokenizer.json"):
-        download_weights("facebook/nllb-200-distilled-600M", ROOT / "models" / "tokenizer", filename=filename)
+    for filename in ("sentencepiece.bpe.model", "vocab.json"):
+        download_weights("facebook/m2m100_418M", ROOT / "models" / "m2m100-tokenizer",
+                         revision="55c2e61bbf05dfb8d7abccdc3fae6fc8512fd636", filename=filename)
     if not args.skip_tts:
         print("Preparing local Japanese TTS…", flush=True)
         import pyopenjtalk

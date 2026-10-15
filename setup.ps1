@@ -28,4 +28,4 @@ if (-not $SkipModels) {
     & $AppPython tools\download_models.py --whisper $WhisperModel
     if ($LASTEXITCODE -ne 0) { throw "Model download failed; rerun setup.ps1 to resume" }
 }
-Write-Host "Setup finished. Run start.cmd. See README.md for VB-CABLE routing."
+Write-Host "Setup finished. Run start.cmd. See drivers/README.md for open-source microphone routing."

@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFormLayout,
 from .audio import devices
 from .config import Settings
 from .service import Service
+from .routing import is_open_output
 
 
 class Subtitle(QWidget):
@@ -83,26 +84,20 @@ class Window(QMainWindow):
         form.addRow("你的实体麦克风", self.mic)
         form.addRow("接收语音（耳机/音频线的回环）", self.receive)
         form.addRow("日语输出（虚拟音频线播放端）", self.output)
+        self.receive_only = QCheckBox("仅接收字幕（无需虚拟麦克风驱动）")
+        self.receive_only.setChecked(self.settings.receive_only)
+        self.receive_only.toggled.connect(self.update_mode)
+        form.addRow(self.receive_only)
         self.refresh = QPushButton("刷新音频设备")
         self.refresh.clicked.connect(self.refresh_devices)
         form.addRow(self.refresh)
         self.ptt = QCheckBox("按住 F8 说中文，松开后发送翻译（推荐）")
         self.ptt.setChecked(self.settings.push_to_talk)
         form.addRow(self.ptt)
-        self.backend = QComboBox()
-        self.backend.addItem("CPU · 无需 CUDA", "cpu")
-        self.backend.addItem("NVIDIA GPU · 需要 CUDA 12 / cuDNN 9", "cuda")
-        self.backend.setCurrentIndex(max(0, self.backend.findData(self.settings.asr_device)))
-        form.addRow("语音识别运行设备", self.backend)
-        self.tts = QComboBox()
-        self.tts.addItem("OpenJTalk · 内置本地日语合成", "openjtalk")
-        self.tts.addItem("VOICEVOX · 需先启动本地引擎", "voicevox")
-        self.tts.setCurrentIndex(max(0, self.tts.findData(self.settings.tts)))
-        form.addRow("日语声音", self.tts)
-        self.speaker = QSpinBox()
-        self.speaker.setRange(0, 10000)
-        self.speaker.setValue(self.settings.voicevox_speaker)
-        form.addRow("VOICEVOX 声音风格 ID", self.speaker)
+        form.addRow("本地语音引擎", QLabel("Whisper + M2M100 + OpenJTalk · CPU"))
+        self.route_status = QLabel()
+        self.route_status.setWordWrap(True)
+        form.addRow("开源虚拟麦克风", self.route_status)
         self.screen = QComboBox()
         for index, screen in enumerate(QApplication.screens()):
             self.screen.addItem(f"屏幕 {index + 1} · {screen.name()}", index)
@@ -129,18 +124,21 @@ class Window(QMainWindow):
         guide.setPlainText(
             "首次使用\n\n"
             "1. 运行 setup.ps1，安装依赖并下载本地模型。之后翻译可以断网运行。\n\n"
-            "2. 从 vb-audio.com/Cable 安装 VB-CABLE（驱动需管理员权限，可能需重启）。\n\n"
+            "只看队友字幕：勾选「仅接收字幕」，选择耳机对应回环，即可开始；无需虚拟驱动。\n\n"
+            "2. 开源音频驱动接入说明见 drivers/README.md。当前支持 RadioVoice 的 GPL 驱动端点。"
+            "未安装驱动时，虚拟麦克风尚不可用。\n\n"
             "3. 本软件：实体麦克风选你的麦克风；接收语音选耳机对应的 [Loopback]；"
-            "日语输出选 CABLE Input。\n\n"
-            "4. 游戏 / Discord / 其他语音软件：输入设备选 CABLE Output；输出设备选耳机。"
+            "日语输出选 RadioVoice Output。\n\n"
+            "4. 游戏 / Discord / 其他语音软件：输入设备选 RadioVoice Microphone；输出设备选耳机。"
             "目标软件使用语音激活或持续输入；它的按键说话必须覆盖翻译播放时段，"
             "本软件 F8 松开后才开始翻译。\n\n"
             "5. 开始翻译，按住 F8 说中文，松开。日语队友讲话会在屏幕底部显示中文。\n\n"
             "耳机回环包含该耳机播放的全部声音。为了减少游戏音效干扰，"
             "可将聊天软件输出单独路由到另一条音频线，再监听该音频线回环。\n\n"
             "独占全屏游戏可能遮住字幕，请选择无边框窗口。字幕窗口不接收鼠标点击。\n\n"
-            "内置 OpenJTalk 音色偏机械。需要更自然日语可另装并启动 VOICEVOX，"
-            "本软件只连接 127.0.0.1:50021。声音使用条款见对应角色说明。\n\n"
+            "内置 OpenJTalk 的 Mei 日语声库采用 CC BY 3.0，归属信息见 DEPENDENCIES.md。\n\n"
+            "此版本保持系统安全设置不变，不自动安装内核驱动，不开启测试签名。"
+            "上游驱动当前要求测试模式，尚未验证可在你保留现有安全设置时使用。\n\n"
             "翻译按短句处理；语音停顿约 0.4 秒后提交，连续讲话约 5 秒分段。"
             "实际延迟取决于硬件、模型和排队情况，记录页显示处理耗时。"
         )
@@ -161,6 +159,16 @@ class Window(QMainWindow):
         self.poll.timeout.connect(self.poll_ptt)
         self.poll.start(20)
         self.refresh_devices()
+        self.update_mode()
+
+    def update_mode(self):
+        sending = not self.receive_only.isChecked()
+        self.mic.setEnabled(sending)
+        self.output.setEnabled(sending)
+        self.ptt.setEnabled(sending)
+        if hasattr(self, "status") and self.service is None:
+            self.status.setText("就绪 · 仅接收字幕只需选择耳机回环" if not sending
+                                else "就绪 · 发送模式需要实体麦克风及开源虚拟驱动")
 
     def refresh_devices(self):
         try:
@@ -175,13 +183,16 @@ class Window(QMainWindow):
                                        (self.output, "output", self.settings.output_device)]:
                 current = combo.currentText() or saved
                 combo.clear()
-                for key, _ in available[kind]:
+                choices = available[kind]
+                if kind == "output":
+                    choices = [(key, index) for key, index in choices if is_open_output(key)]
+                for key, _ in choices:
                     combo.addItem(key)
                 index = combo.findText(current)
                 if index >= 0:
                     combo.setCurrentIndex(index)
                 elif kind == "output":
-                    candidates = [i for i in range(combo.count()) if "cable input" in combo.itemText(i).lower()]
+                    candidates = [i for i in range(combo.count()) if is_open_output(combo.itemText(i))]
                     candidates.sort(key=lambda i: "wasapi" not in combo.itemText(i).lower())
                     combo.setCurrentIndex(candidates[0] if candidates else -1)
                 elif kind == "receive":
@@ -191,6 +202,8 @@ class Window(QMainWindow):
                 else:
                     combo.setPlaceholderText("请选择你的实体麦克风")
                     combo.setCurrentIndex(-1)
+            self.route_status.setText("已检测到开源驱动端点；实际收发仍需联调" if self.output.count()
+                                      else "未检测到兼容开源驱动 · 虚拟麦克风尚不可用")
         except Exception as exc:
             self.status.setText(f"读取音频设备失败：{exc}")
 
@@ -198,10 +211,8 @@ class Window(QMainWindow):
         self.settings.microphone = self.mic.currentText()
         self.settings.receive_device = self.receive.currentText()
         self.settings.output_device = self.output.currentText()
+        self.settings.receive_only = self.receive_only.isChecked()
         self.settings.push_to_talk = self.ptt.isChecked()
-        self.settings.asr_device = self.backend.currentData()
-        self.settings.tts = self.tts.currentData()
-        self.settings.voicevox_speaker = self.speaker.value()
         self.settings.screen = self.screen.currentData() or 0
         self.settings.font_size = self.font_size.value()
         self.settings.bottom_margin = self.margin.value()
@@ -212,8 +223,12 @@ class Window(QMainWindow):
         self.overlay.display("味方が右にいます。一緒に行こう。", "队友在右边，一起走吧。")
 
     def start(self):
-        if not all(combo.currentText() for combo in (self.mic, self.receive, self.output)):
-            QMessageBox.information(self, "请选择设备", "请选择实体麦克风、接收回环设备和虚拟音频线播放端。")
+        required = (self.receive,) if self.receive_only.isChecked() else (self.mic, self.receive, self.output)
+        if not all(combo.currentText() for combo in required):
+            message = ("请选择你听队友语音的耳机回环设备。" if self.receive_only.isChecked()
+                       else "请选择实体麦克风、接收回环和开源驱动 RadioVoice Output。"
+                            "若无输出设备，请阅读 drivers/README.md；程序不会修改系统安全设置。")
+            QMessageBox.information(self, "请选择设备", message)
             return
         self.save()
         self.stop_requested = False

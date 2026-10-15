@@ -18,3 +18,12 @@ class ConfigTests(unittest.TestCase):
     def test_missing_file_defaults(self):
         with tempfile.TemporaryDirectory() as directory:
             self.assertEqual(Settings.load(Path(directory) / "missing.json"), Settings())
+
+    def test_legacy_closed_backend_options_are_not_restored(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.json"
+            path.write_text('{"tts":"voicevox","asr_device":"cuda","voicevox_speaker":1}', encoding="utf-8")
+            settings = Settings.load(path)
+            self.assertTrue(settings.receive_only)
+            self.assertFalse(hasattr(settings, "tts"))
+            self.assertFalse(hasattr(settings, "asr_device"))
