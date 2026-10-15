@@ -100,21 +100,22 @@ class Capture(threading.Thread):
                 stream.close()
 
 
-def play(p, device, samples, sample_rate, stop):
+def play(p, device, samples, sample_rate, stop, volume=lambda: 1.0):
     rate = int(device["defaultSampleRate"])
     channels = min(2, int(device["maxOutputChannels"]))
     if rate != sample_rate:
         gcd = math.gcd(rate, sample_rate)
         samples = resample_poly(samples, rate // gcd, sample_rate // gcd)
-    pcm = (np.clip(samples, -1, 1) * 32767).astype(np.int16)
-    pcm = np.repeat(pcm[:, None], channels, axis=1)
+    samples = np.asarray(samples, dtype=np.float32)
     stream = p.open(format=pa.paInt16, channels=channels, rate=rate,
                     output=True, output_device_index=int(device["index"]))
     try:
-        for offset in range(0, len(pcm), rate // 50):
+        for offset in range(0, len(samples), rate // 50):
             if stop.is_set():
                 break
-            stream.write(pcm[offset:offset + rate // 50].tobytes())
+            gain = max(0.0, min(1.0, float(volume())))
+            pcm = (np.clip(samples[offset:offset + rate // 50] * gain, -1, 1) * 32767).astype(np.int16)
+            stream.write(np.repeat(pcm[:, None], channels, axis=1).tobytes())
     finally:
         stream.stop_stream()
         stream.close()

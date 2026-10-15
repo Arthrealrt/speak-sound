@@ -25,7 +25,7 @@ class LocalModels:
             raise FileNotFoundError("缺少识别模型，请先运行 setup.ps1 下载模型")
         report("正在载入本地语音识别模型…")
         self.asr = WhisperModel(str(model_root / "whisper"), device="cpu", compute_type="int8",
-                                cpu_threads=4, local_files_only=True)
+                                cpu_threads=settings.asr_threads, local_files_only=True)
         if cancelled():
             return
         report("正在载入本地中日翻译模型…")
@@ -62,8 +62,9 @@ class LocalModels:
                 # Give short synthesized / clipped-onset Chinese phrases a quiet lead-in.
                 samples = np.pad(samples, (8000, 0))
             segments, _ = self.asr.transcribe(
-                samples, language=language, beam_size=5 if language == "zh" else 1,
+                samples, language=language, beam_size=(3 if self.settings.speed_mode == "fast" else 5) if language == "zh" else 1,
                 condition_on_previous_text=False,
+                temperature=0 if self.settings.speed_mode == "fast" else (0, .2, .4, .6, .8, 1.0),
                 vad_filter=False, no_speech_threshold=.6,
                 initial_prompt="队友、敌人、左边、右边、前方、后方、集合、撤退、掩护、补给。"
                                if language == "zh" else "ゲームのボイスチャット。")
@@ -77,7 +78,8 @@ class LocalModels:
             tokens = self.tokenizer.convert_ids_to_tokens(self.tokenizer.encode(text, truncation=True, max_length=256))
             target_token = self.tokenizer.convert_ids_to_tokens(self.tokenizer.get_lang_id(target))
             result = self.mt.translate_batch([tokens], target_prefix=[[target_token]],
-                                            max_decoding_length=160, beam_size=4)
+                                            max_decoding_length=160,
+                                            beam_size=2 if self.settings.speed_mode == "fast" else 4)
             ids = self.tokenizer.convert_tokens_to_ids(result[0].hypotheses[0][1:])
             return self.tokenizer.decode(ids, skip_special_tokens=True).strip()
 

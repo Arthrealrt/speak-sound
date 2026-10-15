@@ -22,17 +22,18 @@ class FeedbackGate:
 
 
 class LocalPlayback(threading.Thread):
-    def __init__(self, p, device, stop, gate, play, report):
+    def __init__(self, p, device, stop, gate, play, report, volume=None):
         super().__init__(name="local-translation-playback", daemon=True)
         self.p, self.device, self.stop, self.gate = p, device, stop, gate
         self.play, self.report = play, report
         self.queue = queue.Queue(maxsize=2)
+        self.volume = volume
 
-    def submit(self, samples, rate):
+    def submit(self, samples, rate, direction="in"):
         if self.stop.is_set():
             return False
         try:
-            self.queue.put_nowait((samples, rate))
+            self.queue.put_nowait((samples, rate, direction))
             return True
         except queue.Full:
             self.report("本地译音播放积压，已跳过一句试听；字幕和虚拟麦克风发送不受影响")
@@ -41,14 +42,18 @@ class LocalPlayback(threading.Thread):
     def run(self):
         while not self.stop.is_set():
             try:
-                samples, rate = self.queue.get(timeout=.1)
+                samples, rate, direction = self.queue.get(timeout=.1)
             except queue.Empty:
                 continue
             if self.stop.is_set():
                 break
             self.gate.begin()
             try:
-                self.play(self.p, self.device, samples, rate, self.stop)
+                if self.volume is None:
+                    self.play(self.p, self.device, samples, rate, self.stop)
+                else:
+                    self.play(self.p, self.device, samples, rate, self.stop,
+                              volume=lambda: self.volume(direction))
             except Exception as exc:
                 self.report(f"本地译音播放失败：{exc}")
             finally:

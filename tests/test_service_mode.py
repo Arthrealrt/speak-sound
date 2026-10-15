@@ -24,6 +24,20 @@ class FakeCapture:
 
 @unittest.skipUnless(SERVICE_AVAILABLE, "desktop dependencies not installed")
 class ServiceModeTests(unittest.TestCase):
+    def test_process_mode_does_not_resolve_device_loopback(self):
+        import speak_sound.service as module
+        from unittest.mock import Mock
+        resolved = []
+        target = Mock(alive=lambda: True)
+        class FakeProcessCapture(FakeCapture):
+            def __init__(self, target, destination, stop, settings, report):
+                self.stop, self.ident = stop, None
+        with patch.object(module, "LocalModels"), patch.object(module.pa, "PyAudio"), \
+             patch.object(module, "resolve", side_effect=lambda *args: resolved.append(args)), \
+             patch.object(module, "ProcessCapture", FakeProcessCapture):
+            Service(Settings(receive_mode="process", receive_only=True, speak_incoming=False), target).run()
+        self.assertEqual(resolved, [])
+
     def run_mode(self, settings):
         import speak_sound.service as module
         resolved = []

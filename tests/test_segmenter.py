@@ -4,6 +4,24 @@ from speak_sound.segmenter import Segmenter
 
 
 class SegmentationTests(unittest.TestCase):
+    def test_shorter_silence_submits_earlier(self):
+        for silence, expected in ((200, 10), (400, 20), (1500, 75)):
+            with self.subTest(silence=silence):
+                segmenter = Segmenter(silence_ms=silence)
+                for _ in range(10):
+                    segmenter.push(b'v', True)
+                for index in range(expected):
+                    result = segmenter.push(b's', False)
+                    self.assertEqual(result is not None, index == expected - 1)
+
+    def test_adjustable_long_sentence_limit(self):
+        for seconds in (1, 3, 10):
+            with self.subTest(seconds=seconds):
+                segmenter = Segmenter(max_seconds=seconds)
+                results = [segmenter.push(b'v', True) for _ in range(int(seconds * 50))]
+                self.assertTrue(all(result is None for result in results[:-1]))
+                self.assertIsNotNone(results[-1])
+
     def test_silence_does_not_produce_transcript(self):
         s = Segmenter()
         for _ in range(500):

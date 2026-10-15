@@ -5,6 +5,23 @@ from speak_sound.playback import FeedbackGate, LocalPlayback
 
 
 class PlaybackTests(unittest.TestCase):
+    def test_direction_selects_independent_live_gain(self):
+        stop = threading.Event()
+        volumes = {"in": .8, "out": .4}
+        observed = []
+        def play(*args, volume):
+            observed.append(volume())
+            volumes['out'] = 0
+            observed.append(volume())
+            stop.set()
+        player = LocalPlayback(None, None, stop, FeedbackGate(), play, lambda message: None,
+                               lambda direction: volumes[direction])
+        player.submit([0], 16000, 'out')
+        player.start()
+        player.join(timeout=2)
+        self.assertEqual(observed, [.4, 0])
+        self.assertEqual(volumes['in'], .8)
+
     def test_feedback_gate_covers_playback_and_tail(self):
         now = [1.0]
         gate = FeedbackGate(clock=lambda: now[0])

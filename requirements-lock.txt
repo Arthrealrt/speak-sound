@@ -13,7 +13,9 @@ idna==3.20
 numpy==2.5.4
 onnxruntime==1.31.0
 packaging==26.3
+proc-tap==1.1.1
 protobuf==7.36.2
+psutil==7.2.2
 PyAudioWPatch==0.2.12.9
 pydantic==2.14.1
 pydantic_core==2.50.1

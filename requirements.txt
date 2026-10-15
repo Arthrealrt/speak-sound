@@ -11,3 +11,5 @@ huggingface-hub>=0.26,<1
 pyopenjtalk-plus==0.4.1.post9
 requests>=2.32,<3
 sherpa-onnx>=1.12.15,<2
+proc-tap==1.1.1
+psutil>=7,<8

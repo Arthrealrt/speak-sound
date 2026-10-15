@@ -9,6 +9,7 @@ from .audio import Capture, play, resolve
 from .models import LocalModels
 from .routing import require_open_output
 from .playback import FeedbackGate, LocalPlayback
+from .process_audio import ProcessCapture
 
 
 class Events(QObject):
@@ -20,8 +21,9 @@ class Events(QObject):
 
 
 class Service:
-    def __init__(self, settings):
+    def __init__(self, settings, process_target=None):
         self.settings = settings
+        self.process_target = process_target
         self.events = Events()
         self.stop = threading.Event()
         self.talking = threading.Event()
@@ -40,7 +42,12 @@ class Service:
             if self.stop.is_set():
                 return
             p = pa.PyAudio()
-            receive = resolve(p, "receive", self.settings.receive_device)
+            receive = None
+            if self.settings.receive_mode == "process":
+                if self.process_target is None or not self.process_target.alive():
+                    raise ValueError("请选择仍在运行的接收进程")
+            else:
+                receive = resolve(p, "receive", self.settings.receive_device)
             mic = output = None
             if not self.settings.receive_only:
                 mic = resolve(p, "microphone", self.settings.microphone)
@@ -52,11 +59,16 @@ class Service:
                 listen = resolve(p, "output", self.settings.listen_device)
                 if self.settings.listen_device == self.settings.output_device and output is not None:
                     raise ValueError("本地试听请选择耳机，不能与虚拟麦克风播放端使用同一设备")
-                local = LocalPlayback(p, listen, self.stop, self.feedback, play, self.events.status.emit)
+                def volume(direction):
+                    if self.settings.playback_muted:
+                        return 0.0
+                    return (self.settings.incoming_volume if direction == "in" else self.settings.outgoing_volume) / 100
+                local = LocalPlayback(p, listen, self.stop, self.feedback, play, self.events.status.emit, volume)
             incoming, outgoing = queue.Queue(maxsize=2), queue.Queue(maxsize=2)
-            captures = [
-                Capture(p, receive, incoming, self.stop, lambda: not self.feedback.paused(), self.settings, self.events.status.emit),
-            ]
+            if self.settings.receive_mode == "process":
+                captures = [ProcessCapture(self.process_target, incoming, self.stop, self.settings, self.events.status.emit)]
+            else:
+                captures = [Capture(p, receive, incoming, self.stop, lambda: not self.feedback.paused(), self.settings, self.events.status.emit)]
             if not self.settings.receive_only:
                 captures.append(Capture(p, mic, outgoing, self.stop,
                     lambda: not self.sending.is_set() and not self.feedback.paused()
@@ -92,7 +104,7 @@ class Service:
                                 samples, rate = models.synthesize(translated)
                                 if not self.stop.is_set():
                                     if self.settings.monitor_outgoing:
-                                        local.submit(samples, rate)
+                                        local.submit(samples, rate, "out")
                                     if self.settings.send_to_virtual:
                                         play(p, output, samples, rate, self.stop)
                             finally:

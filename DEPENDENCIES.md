@@ -5,6 +5,8 @@
 | 组件 | 许可与来源 |
 | --- | --- |
 | 应用源码 | [MIT](LICENSE) |
+| ProcTap 1.1.1 | MIT；[进程采集源码](https://github.com/m96-chan/ProcTap)，使用其公开源码的原生 Windows 扩展 API，并检查实际进程隔离状态；[许可证副本](licenses/ProcTap-LICENSE.txt) |
+| psutil | BSD-3-Clause；[进程枚举与存活检测](https://github.com/giampaolo/psutil) |
 | Whisper 模型、faster-whisper、CTranslate2 | MIT；[Whisper](https://github.com/openai/whisper)、[faster-whisper](https://github.com/SYSTRAN/faster-whisper)、[CTranslate2](https://github.com/OpenNMT/CTranslate2) |
 | M2M100 原始权重与分词器 | MIT；[Meta 模型卡](https://huggingface.co/facebook/m2m100_418M) |
 | M2M100 int8 权重 | MIT；[固定转换版本](https://huggingface.co/jncraton/m2m100_418M-ct2-int8/tree/7c1b2620a4e58dacecbd8bf89cfd6da7eb9eb7b0) |
@@ -24,6 +26,6 @@
 
 CC BY 3.0 用于声音数据，不是软件代码许可；它要求署名，没有非商业或禁止修改条款。本项目不宣称所有模型训练过程和训练数据都可完全重现。
 
-其余 Python 依赖包括 MIT、BSD、Apache、MPL、PSF 等开源许可。当前部署环境的 39 个 Python 包及其元数据声明记录于 [licenses/python-packages.json](licenses/python-packages.json)；元数据未填写许可的包仍应以所安装包的 LICENSE / notices 为准。依赖确切版本见 `requirements-lock.txt`。
+其余 Python 依赖包括 MIT、BSD、Apache、MPL、PSF 等开源许可。当前部署环境的 41 个 Python 包及其元数据声明记录于 [licenses/python-packages.json](licenses/python-packages.json)；元数据未填写许可的包仍应以所安装包的 LICENSE / notices 为准。依赖确切版本见 `requirements-lock.txt`。
 
 本版不再加载或下载此前的非商业限制翻译模型，也不依赖外部角色音色或专有 GPU 计算库。若重新分发完整二进制/环境，需要同时保留各组件 notices，并履行 LGPL/GPL 对对应组件的源码及替换要求；应用 MIT 许可不会替代这些义务。

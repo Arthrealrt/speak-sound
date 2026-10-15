@@ -9,12 +9,13 @@ from PySide6.QtCore import Qt, QTimer, QLocale
 from PySide6.QtGui import QCloseEvent, QFont, QFontDatabase
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFormLayout,
     QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton, QSpinBox,
-    QTabWidget, QTextEdit, QVBoxLayout, QWidget)
+    QTabWidget, QTextEdit, QVBoxLayout, QWidget, QSlider, QDoubleSpinBox, QScrollArea)
 
 from .audio import devices
 from .config import Settings
 from .service import Service
 from .routing import is_open_output
+from .process_audio import running_processes
 
 
 class Subtitle(QWidget):
@@ -82,6 +83,24 @@ class Window(QMainWindow):
         form = QFormLayout(controls)
         self.mic, self.receive, self.output = QComboBox(), QComboBox(), QComboBox()
         form.addRow("你的实体麦克风", self.mic)
+        self.receive_mode = QComboBox()
+        self.receive_mode.addItem("整个播放设备（回环）", "device")
+        self.receive_mode.addItem("指定运行进程（包含子进程）", "process")
+        self.receive_mode.setCurrentIndex(self.receive_mode.findData(self.settings.receive_mode))
+        self.receive_mode.currentIndexChanged.connect(self.update_mode)
+        form.addRow("接收来源", self.receive_mode)
+        process_row = QWidget()
+        process_layout = QHBoxLayout(process_row)
+        process_layout.setContentsMargins(0, 0, 0, 0)
+        self.process = QComboBox()
+        self.process.setEditable(True)
+        self.process.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.process.completer().setFilterMode(Qt.MatchFlag.MatchContains)
+        process_layout.addWidget(self.process, 1)
+        self.process_refresh = QPushButton("刷新进程")
+        self.process_refresh.clicked.connect(self.refresh_processes)
+        process_layout.addWidget(self.process_refresh)
+        form.addRow("接收进程（可输入名称筛选）", process_row)
         form.addRow("接收语音（耳机/音频线的回环）", self.receive)
         form.addRow("日语输出（虚拟音频线播放端）", self.output)
         self.receive_only = QCheckBox("仅接收队友语音（关闭我的麦克风）")
@@ -118,7 +137,10 @@ class Window(QMainWindow):
         self.preview = QPushButton("预览底部字幕")
         self.preview.clicked.connect(self.preview_subtitle)
         form.addRow(self.preview)
-        self.tabs.addTab(controls, "设备与字幕")
+        device_scroll = QScrollArea()
+        device_scroll.setWidgetResizable(True)
+        device_scroll.setWidget(controls)
+        self.tabs.addTab(device_scroll, "设备与字幕")
         self.playback_controls = QWidget()
         playback_form = QFormLayout(self.playback_controls)
         self.listen = QComboBox()
@@ -132,12 +154,83 @@ class Window(QMainWindow):
         self.outgoing_monitor.toggled.connect(self.update_mode)
         playback_form.addRow(self.outgoing_monitor)
         hint = QLabel("本地播放直接使用现有耳机，无需新驱动。若未勾选发送，日语只供自己试听。\n\n"
-                      "当前监听整台设备的回环。为防止译音被再次识别，译音播放期间及结束后约 0.3 秒，"
-                      "暂停接收与麦克风采集；这段时间的重叠讲话可能漏收。\n\n"
-                      "这里的播放设备选择不会在 Windows 中创建新的虚拟扬声器。")
+                      "指定进程模式只收目标及其子进程的声音，播放译音时仍可收队友。"
+                      "整个设备模式会在译音播放时暂停接收，以防循环翻译。"
+                      "实体麦克风在译音播放时均暂停，建议佩戴耳机。\n\n"
+                      "播放设备选择不会创建 Windows 虚拟扬声器；下面的音量只影响本地译音。")
         hint.setWordWrap(True)
         playback_form.addRow(hint)
         self.tabs.addTab(self.playback_controls, "译音播放")
+        self.timing_controls = QWidget()
+        timing_form = QFormLayout(self.timing_controls)
+        self.speed = QComboBox()
+        self.speed.addItem("均衡 · 更完整的识别与翻译搜索", "balanced")
+        self.speed.addItem("快速 · 减少模型搜索，可能降低准确率", "fast")
+        self.speed.setCurrentIndex(self.speed.findData(self.settings.speed_mode))
+        timing_form.addRow("计算模式", self.speed)
+        self.asr_threads = QSpinBox()
+        self.asr_threads.setRange(1, 16)
+        self.asr_threads.setValue(self.settings.asr_threads)
+        timing_form.addRow("识别 CPU 线程数", self.asr_threads)
+        self.silence = QSpinBox()
+        self.silence.setRange(100, 1500)
+        self.silence.setSingleStep(20)
+        self.silence.setSuffix(" ms")
+        self.silence.setValue(self.settings.silence_ms)
+        timing_form.addRow("停顿后等待多久提交", self.silence)
+        self.segment = QDoubleSpinBox()
+        self.segment.setRange(1, 10)
+        self.segment.setSingleStep(.5)
+        self.segment.setSuffix(" 秒")
+        self.segment.setValue(self.settings.max_speech_seconds)
+        timing_form.addRow("连续讲话最长分段", self.segment)
+        quick = QPushButton("应用低延迟预设（200 ms / 3 秒 / 快速）")
+        quick.clicked.connect(lambda: self.set_timing("fast", 200, 3))
+        timing_form.addRow(quick)
+        balanced = QPushButton("应用均衡预设（400 ms / 5 秒）")
+        balanced.clicked.connect(lambda: self.set_timing("balanced", 400, 5))
+        timing_form.addRow(balanced)
+        timing_hint = QLabel("停止后可调整，下次开始生效。F8 松开即提交，不额外等待停顿。\n\n"
+                            "等待越短，出字幕越快，但自然停顿更容易把一句话切断；分段越短，"
+                            "长句越早开始处理，但上下文减少、计算次数增加。\n\n"
+                            "快速模式减少搜索和重试。增加 CPU 线程数可能加速，也会占用游戏资源，"
+                            "并非越多越快。低延迟预设最多使用 8 线程，均衡使用 4 线程。\n\n"
+                            "总延迟还包括识别、翻译、语音合成和排队；这些数值不是总耗时上限。"
+                            "记录页的处理时间仅包含识别与翻译。")
+        timing_hint.setWordWrap(True)
+        timing_form.addRow(timing_hint)
+        timing_scroll = QScrollArea()
+        timing_scroll.setWidgetResizable(True)
+        timing_scroll.setWidget(self.timing_controls)
+        self.tabs.addTab(timing_scroll, "速度与延迟")
+        # Outside the disabled settings tabs: gain and mute remain live while running.
+        volume_box = QWidget()
+        volume_form = QFormLayout(volume_box)
+        self.incoming_volume = QSlider(Qt.Orientation.Horizontal)
+        self.outgoing_volume = QSlider(Qt.Orientation.Horizontal)
+        self.volume_labels = []
+        for slider, value, label in ((self.incoming_volume, self.settings.incoming_volume, "队友中文播报音量"),
+                                      (self.outgoing_volume, self.settings.outgoing_volume, "我的日语试听音量")):
+            slider.setRange(0, 100)
+            slider.setValue(value)
+            row_widget = QWidget()
+            row_layout = QHBoxLayout(row_widget)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.addWidget(slider, 1)
+            percentage = QLabel(f"{value}%")
+            percentage.setMinimumWidth(45)
+            self.volume_labels.append(percentage)
+            row_layout.addWidget(percentage)
+            slider.valueChanged.connect(self.update_volume)
+            volume_form.addRow(label, row_widget)
+        self.mute = QCheckBox("静音本地译音（不影响虚拟麦克风发送）")
+        self.mute.setChecked(self.settings.playback_muted)
+        self.mute.toggled.connect(self.update_volume)
+        volume_form.addRow(self.mute)
+        layout.addWidget(volume_box)
+        self.volume_save = QTimer(self)
+        self.volume_save.setSingleShot(True)
+        self.volume_save.timeout.connect(self.settings.save)
         self.history = QTextEdit()
         self.history.setReadOnly(True)
         self.history.document().setMaximumBlockCount(300)
@@ -159,12 +252,13 @@ class Window(QMainWindow):
             "本软件 F8 松开后才开始翻译。\n\n"
             "5. 开始翻译，按住 F8 说中文，松开。日语队友讲话会在屏幕底部显示中文。\n\n"
             "耳机回环包含该耳机播放的全部声音。为了减少游戏音效干扰，"
-            "可将聊天软件输出单独路由到另一条音频线，再监听该音频线回环。\n\n"
+            "可改选「指定运行进程」，刷新并选择 Discord 或游戏 PID。采集包含子进程，"
+            "不能在同一个游戏进程中分离队友语音与游戏音效。进程退出后停止，重启需重新选择。\n\n"
             "独占全屏游戏可能遮住字幕，请选择无边框窗口。字幕窗口不接收鼠标点击。\n\n"
             "内置 OpenJTalk 的 Mei 日语声库采用 CC BY 3.0，归属信息见 DEPENDENCIES.md。\n\n"
             "此版本保持系统安全设置不变，不自动安装内核驱动，不开启测试签名。"
             "上游驱动当前要求测试模式，尚未验证可在你保留现有安全设置时使用。\n\n"
-            "翻译按短句处理；语音停顿约 0.4 秒后提交，连续讲话约 5 秒分段。"
+            "在「速度与延迟」页调整停顿等待、最长分段和计算模式；下方音量与静音可实时调整。"
             "实际延迟取决于硬件、模型和排队情况，记录页显示处理耗时。"
         )
         self.tabs.addTab(guide, "连接指引")
@@ -184,10 +278,40 @@ class Window(QMainWindow):
         self.poll.timeout.connect(self.poll_ptt)
         self.poll.start(20)
         self.refresh_devices()
+        self.refresh_processes()
         self.update_mode()
 
+    def refresh_processes(self):
+        current = self.process.currentData()
+        self.process.clear()
+        for target in running_processes():
+            self.process.addItem(f"{target.name} · PID {target.pid}", target)
+        index = next((i for i in range(self.process.count()) if self.process.itemData(i) == current), -1)
+        self.process.setCurrentIndex(index)
+        self.process.setPlaceholderText("请选择游戏 / Discord 进程")
+
+    def set_timing(self, mode, silence, segment):
+        self.speed.setCurrentIndex(self.speed.findData(mode))
+        self.silence.setValue(silence)
+        self.segment.setValue(segment)
+        self.asr_threads.setValue(min(8, max(1, (os.cpu_count() or 4) // 2)) if mode == "fast" else 4)
+
+    def update_volume(self):
+        self.settings.incoming_volume = self.incoming_volume.value()
+        self.settings.outgoing_volume = self.outgoing_volume.value()
+        self.settings.playback_muted = self.mute.isChecked()
+        for slider, label in zip((self.incoming_volume, self.outgoing_volume), self.volume_labels):
+            label.setText(f"{slider.value()}%")
+        self.volume_save.start(350)
+
     def update_mode(self):
+        if not hasattr(self, "outgoing_monitor"):
+            return
         sending = not self.receive_only.isChecked()
+        by_process = self.receive_mode.currentData() == "process"
+        self.process.setEnabled(by_process)
+        self.process_refresh.setEnabled(by_process)
+        self.receive.setEnabled(not by_process)
         self.mic.setEnabled(sending)
         self.output.setEnabled(sending and self.send_virtual.isChecked())
         self.send_virtual.setEnabled(sending)
@@ -248,6 +372,11 @@ class Window(QMainWindow):
     def save(self):
         self.settings.microphone = self.mic.currentText()
         self.settings.receive_device = self.receive.currentText()
+        self.settings.receive_mode = self.receive_mode.currentData()
+        self.settings.speed_mode = self.speed.currentData()
+        self.settings.asr_threads = self.asr_threads.value()
+        self.settings.silence_ms = self.silence.value()
+        self.settings.max_speech_seconds = self.segment.value()
         self.settings.output_device = self.output.currentText()
         self.settings.receive_only = self.receive_only.isChecked()
         self.settings.send_to_virtual = self.send_virtual.isChecked()
@@ -265,7 +394,12 @@ class Window(QMainWindow):
         self.overlay.display("味方が右にいます。一緒に行こう。", "队友在右边，一起走吧。")
 
     def start(self):
-        required = [self.receive]
+        by_process = self.receive_mode.currentData() == "process"
+        target = self.process.currentData() if by_process else None
+        if by_process and (target is None or self.process.currentText() != f"{target.name} · PID {target.pid}" or not target.alive()):
+            QMessageBox.information(self, "请选择进程", "请刷新并从列表选择仍在运行的游戏或聊天进程。")
+            return
+        required = [] if by_process else [self.receive]
         if not self.receive_only.isChecked():
             required.append(self.mic)
             if self.send_virtual.isChecked():
@@ -283,7 +417,7 @@ class Window(QMainWindow):
             return
         self.save()
         self.stop_requested = False
-        self.service = Service(self.settings)
+        self.service = Service(self.settings, target)
         self.service.events.status.connect(self.status.setText)
         self.service.events.subtitle.connect(self.overlay.display)
         self.service.events.transcript.connect(self.record)
@@ -291,6 +425,7 @@ class Window(QMainWindow):
         self.start_button.setEnabled(False)
         self.tabs.widget(0).setEnabled(False)
         self.playback_controls.setEnabled(False)
+        self.timing_controls.setEnabled(False)
         self.stop_button.setEnabled(True)
         self.status.setText("正在准备本地模型…")
         self.service.start()
@@ -324,6 +459,7 @@ class Window(QMainWindow):
         self.start_button.setEnabled(True)
         self.tabs.widget(0).setEnabled(True)
         self.playback_controls.setEnabled(True)
+        self.timing_controls.setEnabled(True)
         self.stop_button.setEnabled(False)
         if self.closing:
             self.close()

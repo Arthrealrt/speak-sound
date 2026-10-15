@@ -46,3 +46,31 @@ class AudioConversionTests(unittest.TestCase):
              np.zeros(320, dtype=np.float32), 16000, threading.Event())
         self.assertEqual(sum(map(len, writes)), 960 * 2 * 2)
         self.assertEqual(closed, [True])
+
+    def test_volume_is_applied_live_per_chunk_and_mute_is_silent(self):
+        writes = []
+        gains = iter((0, .5, 1, 0))
+        class Stream:
+            def write(self, data): writes.append(np.frombuffer(data, np.int16))
+            def stop_stream(self): pass
+            def close(self): pass
+        class Audio:
+            def open(self, **kwargs): return Stream()
+        play(Audio(), {"defaultSampleRate": 16000, "maxOutputChannels": 1, "index": 1},
+             np.ones(1280, dtype=np.float32), 16000, threading.Event(), volume=lambda: next(gains))
+        self.assertEqual([int(chunk[0]) for chunk in writes], [0, 16383, 32767, 0])
+
+    def test_stop_interrupts_playback(self):
+        stop = threading.Event()
+        writes = []
+        class Stream:
+            def write(self, data):
+                writes.append(data)
+                stop.set()
+            def stop_stream(self): pass
+            def close(self): pass
+        class Audio:
+            def open(self, **kwargs): return Stream()
+        play(Audio(), {"defaultSampleRate": 16000, "maxOutputChannels": 1, "index": 1},
+             np.ones(16000, dtype=np.float32), 16000, stop)
+        self.assertEqual(len(writes), 1)
