@@ -1,0 +1,12 @@
+PySide6-Essentials>=6.8,<7
+numpy>=1.26,<3
+scipy>=1.13,<2
+PyAudioWPatch>=0.2.12.7,<0.3
+webrtcvad-wheels>=2.0.14,<3
+faster-whisper>=1.1,<2
+transformers>=4.45,<5
+ctranslate2>=4.5,<5
+sentencepiece>=0.2,<0.3
+huggingface-hub>=0.26,<1
+pyopenjtalk-plus==0.4.1.post9
+requests>=2.32,<3
