@@ -25,6 +25,13 @@ def main():
     pcm = (np.clip(samples, -1, 1) * 32767).astype(np.int16).tobytes()
     results["synthesized_seconds"] = len(samples) / rate
     results["ja_recognized"] = model.recognize(to_mono16(pcm, rate, 1), "ja")
+    zh_samples, zh_rate = model.synthesize("敌人在右边，我们一起去吧。", "zh")
+    assert zh_samples.size > zh_rate // 2 and np.max(np.abs(zh_samples)) > .001, "Chinese TTS returned silence"
+    zh_pcm = (np.clip(zh_samples, -1, 1) * 32767).astype(np.int16).tobytes()
+    results["chinese_synthesized_seconds"] = len(zh_samples) / zh_rate
+    results["zh_recognized"] = model.recognize(to_mono16(zh_pcm, zh_rate, 1), "zh")
+    assert "右" in results["zh_recognized"], "Chinese speech roundtrip lost the direction"
+    assert any(word in results["zh_recognized"] for word in ("敌", "敵")), "Chinese speech roundtrip lost enemy"
     assert all(results[key] for key in ("zh_to_ja", "ja_to_zh", "ja_recognized")), results
     assert "右" in results["zh_to_ja"], "Chinese→Japanese dropped the direction in the test sentence"
     assert "右" in results["ja_to_zh"] and any(word in results["ja_to_zh"] for word in ("敌", "敵")), \

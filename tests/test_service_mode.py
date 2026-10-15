@@ -42,8 +42,15 @@ class ServiceModeTests(unittest.TestCase):
         return resolved
 
     def test_subtitle_mode_does_not_open_microphone_or_output(self):
-        self.assertEqual(self.run_mode(Settings(receive_only=True)), ["receive"])
+        self.assertEqual(self.run_mode(Settings(receive_only=True, speak_incoming=False)), ["receive"])
 
     def test_duplex_mode_opens_both_sides_with_open_driver(self):
-        self.assertEqual(self.run_mode(Settings(receive_only=False, output_device="RadioVoice Output")),
+        self.assertEqual(self.run_mode(Settings(receive_only=False, send_to_virtual=True,
+                                                speak_incoming=False, monitor_outgoing=False,
+                                                output_device="RadioVoice Output")),
+                         ["receive", "microphone", "output"])
+
+    def test_local_monitor_does_not_require_virtual_microphone(self):
+        self.assertEqual(self.run_mode(Settings(receive_only=False, send_to_virtual=False,
+                                                speak_incoming=True, monitor_outgoing=True)),
                          ["receive", "microphone", "output"])

@@ -90,7 +90,7 @@ class Capture(threading.Thread):
                         try:
                             self.destination.put_nowait(utterance)
                         except queue.Full:
-                            self.report("翻译速度跟不上语音，已跳过一句；可换用更小的识别模型或 GPU")
+                            self.report("翻译速度跟不上语音，已跳过一句；可换用更小的识别模型")
         except Exception as exc:
             self.report(f"音频采集失败：{exc}")
             self.stop.set()

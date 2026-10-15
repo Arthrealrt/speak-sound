@@ -16,12 +16,14 @@
 | pyopenjtalk-plus / OpenJTalk / HTS Engine | MIT / BSD 系列许可；[pyopenjtalk-plus](https://github.com/tsukumijima/pyopenjtalk-plus)及其第三方源码 notices |
 | SudachiPy / SudachiDict-core | Apache-2.0；[SudachiPy](https://github.com/WorksApplications/SudachiPy)、[SudachiDict](https://github.com/WorksApplications/SudachiDict) |
 | Mei 日语声库 | CC BY 3.0；MMDAgent Project Team，Copyright 2009–2013 Nagoya Institute of Technology, Department of Computer Science。[随包原始声明](licenses/Mei-voice-LICENSE.txt) |
+| MeloTTS 中文声库及 ONNX 转换 | MIT；[固定模型版本](https://huggingface.co/csukuangfj/vits-melo-tts-zh_en/tree/a0d5c6a264c0ef92d70d8661d8cc502d79627cd6)，Copyright 2024 MyShell.ai，转换代码来自 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx/tree/master/scripts/melo-tts) |
+| sherpa-onnx / sherpa-onnx-core | Apache-2.0；[上游](https://github.com/k2-fsa/sherpa-onnx) |
 | Transformers / Hugging Face Hub / tokenizers / SentencePiece | Apache-2.0；各包及上游仓库中的许可文件 |
 | ONNX Runtime | MIT；[上游](https://github.com/microsoft/onnxruntime) |
 | PyAV / FFmpeg | PyAV BSD-3-Clause；FFmpeg 及编解码器按其 LGPL/GPL 和 bundled notices，均须保留随包声明。[PyAV](https://github.com/PyAV-Org/PyAV) |
 
 CC BY 3.0 用于声音数据，不是软件代码许可；它要求署名，没有非商业或禁止修改条款。本项目不宣称所有模型训练过程和训练数据都可完全重现。
 
-其余 Python 依赖包括 MIT、BSD、Apache、MPL、PSF 等开源许可。当前部署环境的 37 个 Python 包及其元数据声明记录于 [licenses/python-packages.json](licenses/python-packages.json)；元数据未填写许可的包仍应以所安装包的 LICENSE / notices 为准。依赖确切版本见 `requirements-lock.txt`。
+其余 Python 依赖包括 MIT、BSD、Apache、MPL、PSF 等开源许可。当前部署环境的 39 个 Python 包及其元数据声明记录于 [licenses/python-packages.json](licenses/python-packages.json)；元数据未填写许可的包仍应以所安装包的 LICENSE / notices 为准。依赖确切版本见 `requirements-lock.txt`。
 
 本版不再加载或下载此前的非商业限制翻译模型，也不依赖外部角色音色或专有 GPU 计算库。若重新分发完整二进制/环境，需要同时保留各组件 notices，并履行 LGPL/GPL 对对应组件的源码及替换要求；应用 MIT 许可不会替代这些义务。

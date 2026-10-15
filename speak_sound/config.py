@@ -10,7 +10,11 @@ class Settings:
     microphone: str = ""
     receive_device: str = ""
     output_device: str = ""
-    receive_only: bool = True
+    receive_only: bool = False
+    send_to_virtual: bool = False
+    listen_device: str = ""
+    speak_incoming: bool = True
+    monitor_outgoing: bool = True
     push_to_talk: bool = True
     screen: int = 0
     font_size: int = 28

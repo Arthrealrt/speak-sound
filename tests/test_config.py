@@ -24,6 +24,6 @@ class ConfigTests(unittest.TestCase):
             path = Path(directory) / "config.json"
             path.write_text('{"tts":"voicevox","asr_device":"cuda","voicevox_speaker":1}', encoding="utf-8")
             settings = Settings.load(path)
-            self.assertTrue(settings.receive_only)
+            self.assertFalse(settings.send_to_virtual)
             self.assertFalse(hasattr(settings, "tts"))
             self.assertFalse(hasattr(settings, "asr_device"))

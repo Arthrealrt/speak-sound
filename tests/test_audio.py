@@ -1,8 +1,9 @@
 import unittest
+import threading
 
 try:
     import numpy as np
-    from speak_sound.audio import to_mono16
+    from speak_sound.audio import to_mono16, play
     AUDIO_AVAILABLE = True
 except ImportError:
     AUDIO_AVAILABLE = False
@@ -28,3 +29,20 @@ class AudioConversionTests(unittest.TestCase):
         mono = np.frombuffer(to_mono16(samples.tobytes(), rate, 1), dtype=np.int16)
         peak = np.argmax(np.abs(np.fft.rfft(mono)))
         self.assertEqual(peak, 440)
+
+    def test_play_resamples_and_interleaves_stereo(self):
+        writes = []
+        closed = []
+
+        class Stream:
+            def write(self, data): writes.append(data)
+            def stop_stream(self): pass
+            def close(self): closed.append(True)
+
+        class Audio:
+            def open(self, **kwargs): return Stream()
+
+        play(Audio(), {"defaultSampleRate": 48000, "maxOutputChannels": 2, "index": 1},
+             np.zeros(320, dtype=np.float32), 16000, threading.Event())
+        self.assertEqual(sum(map(len, writes)), 960 * 2 * 2)
+        self.assertEqual(closed, [True])

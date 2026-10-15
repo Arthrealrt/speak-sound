@@ -92,6 +92,12 @@ def main():
         download_weights("facebook/m2m100_418M", ROOT / "models" / "m2m100-tokenizer",
                          revision="55c2e61bbf05dfb8d7abccdc3fae6fc8512fd636", filename=filename)
     if not args.skip_tts:
+        print("Downloading MIT-licensed Chinese speech model…", flush=True)
+        tts_repo = "csukuangfj/vits-melo-tts-zh_en"
+        tts_revision = "a0d5c6a264c0ef92d70d8661d8cc502d79627cd6"
+        snapshot_download(tts_repo, revision=tts_revision, local_dir=ROOT / "models" / "chinese-tts",
+                          allow_patterns=["tokens.txt", "lexicon.txt", "*.fst", "LICENSE", "README.md"])
+        download_weights(tts_repo, ROOT / "models" / "chinese-tts", revision=tts_revision, filename="model.onnx")
         print("Preparing local Japanese TTS…", flush=True)
         import pyopenjtalk
         pyopenjtalk.tts("準備ができました。")

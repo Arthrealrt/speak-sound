@@ -8,6 +8,7 @@ import pyaudiowpatch as pa
 from .audio import Capture, play, resolve
 from .models import LocalModels
 from .routing import require_open_output
+from .playback import FeedbackGate, LocalPlayback
 
 
 class Events(QObject):
@@ -25,6 +26,7 @@ class Service:
         self.stop = threading.Event()
         self.talking = threading.Event()
         self.sending = threading.Event()
+        self.feedback = FeedbackGate()
         self.thread = threading.Thread(target=self.run, name="translation-service", daemon=True)
 
     def start(self):
@@ -42,15 +44,23 @@ class Service:
             mic = output = None
             if not self.settings.receive_only:
                 mic = resolve(p, "microphone", self.settings.microphone)
+            if not self.settings.receive_only and self.settings.send_to_virtual:
                 output = resolve(p, "output", self.settings.output_device)
                 require_open_output(self.settings.output_device)
+            local = None
+            if self.settings.speak_incoming or (not self.settings.receive_only and self.settings.monitor_outgoing):
+                listen = resolve(p, "output", self.settings.listen_device)
+                if self.settings.listen_device == self.settings.output_device and output is not None:
+                    raise ValueError("本地试听请选择耳机，不能与虚拟麦克风播放端使用同一设备")
+                local = LocalPlayback(p, listen, self.stop, self.feedback, play, self.events.status.emit)
             incoming, outgoing = queue.Queue(maxsize=2), queue.Queue(maxsize=2)
             captures = [
-                Capture(p, receive, incoming, self.stop, lambda: True, self.settings, self.events.status.emit),
+                Capture(p, receive, incoming, self.stop, lambda: not self.feedback.paused(), self.settings, self.events.status.emit),
             ]
             if not self.settings.receive_only:
                 captures.append(Capture(p, mic, outgoing, self.stop,
-                    lambda: not self.sending.is_set() and (not self.settings.push_to_talk or self.talking.is_set()),
+                    lambda: not self.sending.is_set() and not self.feedback.paused()
+                            and (not self.settings.push_to_talk or self.talking.is_set()),
                     self.settings, self.events.status.emit))
 
             def worker(q, direction):
@@ -72,12 +82,19 @@ class Service:
                         self.events.transcript.emit(direction, original, translated, time.monotonic() - started)
                         if direction == "in":
                             self.events.subtitle.emit(original, translated)
+                            if self.settings.speak_incoming:
+                                samples, rate = models.synthesize(translated, "zh")
+                                if not self.stop.is_set():
+                                    local.submit(samples, rate)
                         else:
                             self.sending.set()
                             try:
                                 samples, rate = models.synthesize(translated)
                                 if not self.stop.is_set():
-                                    play(p, output, samples, rate, self.stop)
+                                    if self.settings.monitor_outgoing:
+                                        local.submit(samples, rate)
+                                    if self.settings.send_to_virtual:
+                                        play(p, output, samples, rate, self.stop)
                             finally:
                                 self.sending.clear()
                     except Exception as exc:
@@ -86,13 +103,16 @@ class Service:
             children = captures + [threading.Thread(target=worker, args=(incoming, "in"), daemon=True)]
             if not self.settings.receive_only:
                 children.append(threading.Thread(target=worker, args=(outgoing, "out"), daemon=True))
+            if local is not None:
+                children.insert(0, local)
             for child in children:
                 child.start()
             self.events.active.emit(True)
             if self.settings.receive_only:
-                self.events.status.emit("仅接收字幕运行中 · 日语 → 中文")
+                self.events.status.emit("队友翻译运行中 · 日语 → 中文字幕" + ("及中文播报" if self.settings.speak_incoming else ""))
             else:
-                self.events.status.emit("翻译运行中 · 按住 F8 说中文" if self.settings.push_to_talk else "翻译运行中 · 自动检测中文讲话")
+                route = "发送到虚拟麦克风" if self.settings.send_to_virtual else "仅本地试听，不向游戏发送"
+                self.events.status.emit(("按住 F8 说中文 · " if self.settings.push_to_talk else "自动检测中文讲话 · ") + route)
             self.stop.wait()
         except Exception as exc:
             self.events.status.emit(f"无法启动：{exc}")

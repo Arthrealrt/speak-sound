@@ -330,6 +330,22 @@
     ]
   },
   {
+    "name": "sherpa_onnx",
+    "version": "1.13.8",
+    "license_expression": null,
+    "license": "Apache licensed, as found in the LICENSE file",
+    "license_classifiers": [],
+    "project_urls": []
+  },
+  {
+    "name": "sherpa-onnx-core",
+    "version": "1.13.8",
+    "license_expression": null,
+    "license": "Apache-2.0",
+    "license_classifiers": [],
+    "project_urls": []
+  },
+  {
     "name": "shiboken6",
     "version": "6.12.0",
     "license_expression": null,

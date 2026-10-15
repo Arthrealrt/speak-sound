@@ -36,14 +36,37 @@ class LocalModels:
             return
         import pyopenjtalk
         self.jtalk = pyopenjtalk
+        self.zh_tts = None
+        if settings.speak_incoming:
+            import sherpa_onnx
+            report("正在载入本地中文语音合成模型…")
+            folder = model_root / "chinese-tts"
+            if not (folder / "model.onnx").exists():
+                raise FileNotFoundError("缺少中文播报模型，请重新运行 setup.ps1，或关闭队友中文播报")
+            config = sherpa_onnx.OfflineTtsConfig(
+                model=sherpa_onnx.OfflineTtsModelConfig(
+                    vits=sherpa_onnx.OfflineTtsVitsModelConfig(
+                        model=str(folder / "model.onnx"), tokens=str(folder / "tokens.txt"),
+                        lexicon=str(folder / "lexicon.txt")),
+                    provider="cpu", num_threads=2),
+                rule_fsts=",".join(str(folder / name) for name in ("date.fst", "number.fst", "phone.fst")),
+                max_num_sentences=1)
+            if not config.validate():
+                raise ValueError("中文语音模型配置无效，请重新运行 setup.ps1")
+            self.zh_tts = sherpa_onnx.OfflineTts(config)
 
     def recognize(self, pcm, language):
         with self.asr_lock:
+            samples = np.frombuffer(pcm, np.int16).astype(np.float32) / 32768
+            if language == "zh":
+                # Give short synthesized / clipped-onset Chinese phrases a quiet lead-in.
+                samples = np.pad(samples, (8000, 0))
             segments, _ = self.asr.transcribe(
-                np.frombuffer(pcm, np.int16).astype(np.float32) / 32768,
-                language=language, beam_size=1, condition_on_previous_text=False,
+                samples, language=language, beam_size=5 if language == "zh" else 1,
+                condition_on_previous_text=False,
                 vad_filter=False, no_speech_threshold=.6,
-                initial_prompt="游戏语音交流。" if language == "zh" else "ゲームのボイスチャット。")
+                initial_prompt="队友、敌人、左边、右边、前方、后方、集合、撤退、掩护、补给。"
+                               if language == "zh" else "ゲームのボイスチャット。")
             return "".join(s.text for s in segments if s.no_speech_prob < .7).strip()
 
     def translate(self, text, source, target):
@@ -58,6 +81,11 @@ class LocalModels:
             ids = self.tokenizer.convert_tokens_to_ids(result[0].hypotheses[0][1:])
             return self.tokenizer.decode(ids, skip_special_tokens=True).strip()
 
-    def synthesize(self, text):
+    def synthesize(self, text, language="ja"):
+        if language == "zh":
+            if self.zh_tts is None:
+                raise RuntimeError("未载入中文语音模型，请先启用队友中文播报")
+            audio = self.zh_tts.generate(text, sid=0, speed=1.0)
+            return np.asarray(audio.samples, dtype=np.float32), audio.sample_rate
         samples, rate = self.jtalk.tts(text)
         return (np.asarray(samples, dtype=np.float32) / 32768, int(rate))

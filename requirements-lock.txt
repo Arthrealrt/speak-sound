@@ -25,6 +25,8 @@ requests==2.34.2
 safetensors==0.8.0
 scipy==1.18.1
 sentencepiece==0.2.2
+sherpa-onnx-core==1.13.8
+sherpa_onnx==1.13.8
 shiboken6==6.12.0
 sudachidict-core==20261015
 SudachiPy==0.7.0

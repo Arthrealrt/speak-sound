@@ -84,10 +84,14 @@ class Window(QMainWindow):
         form.addRow("你的实体麦克风", self.mic)
         form.addRow("接收语音（耳机/音频线的回环）", self.receive)
         form.addRow("日语输出（虚拟音频线播放端）", self.output)
-        self.receive_only = QCheckBox("仅接收字幕（无需虚拟麦克风驱动）")
+        self.receive_only = QCheckBox("仅接收队友语音（关闭我的麦克风）")
         self.receive_only.setChecked(self.settings.receive_only)
         self.receive_only.toggled.connect(self.update_mode)
         form.addRow(self.receive_only)
+        self.send_virtual = QCheckBox("向虚拟麦克风发送日语（需兼容开源驱动）")
+        self.send_virtual.setChecked(self.settings.send_to_virtual)
+        self.send_virtual.toggled.connect(self.update_mode)
+        form.addRow(self.send_virtual)
         self.refresh = QPushButton("刷新音频设备")
         self.refresh.clicked.connect(self.refresh_devices)
         form.addRow(self.refresh)
@@ -115,6 +119,25 @@ class Window(QMainWindow):
         self.preview.clicked.connect(self.preview_subtitle)
         form.addRow(self.preview)
         self.tabs.addTab(controls, "设备与字幕")
+        self.playback_controls = QWidget()
+        playback_form = QFormLayout(self.playback_controls)
+        self.listen = QComboBox()
+        playback_form.addRow("本地译音播放到耳机 / 扬声器", self.listen)
+        self.incoming_voice = QCheckBox("队友日语 → 中文播报，同时显示中文字幕")
+        self.incoming_voice.setChecked(self.settings.speak_incoming)
+        self.incoming_voice.toggled.connect(self.update_mode)
+        playback_form.addRow(self.incoming_voice)
+        self.outgoing_monitor = QCheckBox("试听我说中文后生成的日语")
+        self.outgoing_monitor.setChecked(self.settings.monitor_outgoing)
+        self.outgoing_monitor.toggled.connect(self.update_mode)
+        playback_form.addRow(self.outgoing_monitor)
+        hint = QLabel("本地播放直接使用现有耳机，无需新驱动。若未勾选发送，日语只供自己试听。\n\n"
+                      "当前监听整台设备的回环。为防止译音被再次识别，译音播放期间及结束后约 0.3 秒，"
+                      "暂停接收与麦克风采集；这段时间的重叠讲话可能漏收。\n\n"
+                      "这里的播放设备选择不会在 Windows 中创建新的虚拟扬声器。")
+        hint.setWordWrap(True)
+        playback_form.addRow(hint)
+        self.tabs.addTab(self.playback_controls, "译音播放")
         self.history = QTextEdit()
         self.history.setReadOnly(True)
         self.history.document().setMaximumBlockCount(300)
@@ -124,7 +147,9 @@ class Window(QMainWindow):
         guide.setPlainText(
             "首次使用\n\n"
             "1. 运行 setup.ps1，安装依赖并下载本地模型。之后翻译可以断网运行。\n\n"
-            "只看队友字幕：勾选「仅接收字幕」，选择耳机对应回环，即可开始；无需虚拟驱动。\n\n"
+            "本地双向试听：选择实体麦克风和接收回环，在「译音播放」页选择耳机，"
+            "启用中文播报与日语试听；保持虚拟麦克风发送关闭即可无需驱动使用。\n\n"
+            "只收队友：勾选「仅接收队友语音」；若只看字幕，再关闭「译音播放」页的中文播报。\n\n"
             "2. 开源音频驱动接入说明见 drivers/README.md。当前支持 RadioVoice 的 GPL 驱动端点。"
             "未安装驱动时，虚拟麦克风尚不可用。\n\n"
             "3. 本软件：实体麦克风选你的麦克风；接收语音选耳机对应的 [Loopback]；"
@@ -164,11 +189,17 @@ class Window(QMainWindow):
     def update_mode(self):
         sending = not self.receive_only.isChecked()
         self.mic.setEnabled(sending)
-        self.output.setEnabled(sending)
+        self.output.setEnabled(sending and self.send_virtual.isChecked())
+        self.send_virtual.setEnabled(sending)
         self.ptt.setEnabled(sending)
+        self.outgoing_monitor.setEnabled(sending)
+        self.listen.setEnabled(self.incoming_voice.isChecked() or (sending and self.outgoing_monitor.isChecked()))
         if hasattr(self, "status") and self.service is None:
-            self.status.setText("就绪 · 仅接收字幕只需选择耳机回环" if not sending
-                                else "就绪 · 发送模式需要实体麦克风及开源虚拟驱动")
+            if not sending:
+                self.status.setText("就绪 · 接收队友语音，显示字幕及可选中文播报")
+            else:
+                self.status.setText("就绪 · " + ("启用虚拟麦克风发送" if self.send_virtual.isChecked()
+                                                else "本地双向译音试听，不向游戏发送日语"))
 
     def refresh_devices(self):
         try:
@@ -178,14 +209,18 @@ class Window(QMainWindow):
                     default_receive = int(p.get_default_wasapi_loopback()["index"])
                 except OSError:
                     default_receive = None
+                default_listen = p.get_host_api_info_by_type(pa.paWASAPI)["defaultOutputDevice"]
             for combo, kind, saved in [(self.mic, "microphone", self.settings.microphone),
                                        (self.receive, "receive", self.settings.receive_device),
-                                       (self.output, "output", self.settings.output_device)]:
+                                       (self.output, "output", self.settings.output_device),
+                                       (self.listen, "listen", self.settings.listen_device)]:
                 current = combo.currentText() or saved
                 combo.clear()
-                choices = available[kind]
+                choices = available["output" if kind == "listen" else kind]
                 if kind == "output":
                     choices = [(key, index) for key, index in choices if is_open_output(key)]
+                elif kind == "listen":
+                    choices = [(key, index) for key, index in choices if not is_open_output(key)]
                 for key, _ in choices:
                     combo.addItem(key)
                 index = combo.findText(current)
@@ -199,6 +234,9 @@ class Window(QMainWindow):
                     candidates = [i for i, (_, device_index) in enumerate(available[kind])
                                   if device_index == default_receive]
                     combo.setCurrentIndex(candidates[0] if candidates else -1)
+                elif kind == "listen":
+                    candidates = [i for i, (_, device_index) in enumerate(choices) if device_index == default_listen]
+                    combo.setCurrentIndex(candidates[0] if candidates else (0 if choices else -1))
                 else:
                     combo.setPlaceholderText("请选择你的实体麦克风")
                     combo.setCurrentIndex(-1)
@@ -212,6 +250,10 @@ class Window(QMainWindow):
         self.settings.receive_device = self.receive.currentText()
         self.settings.output_device = self.output.currentText()
         self.settings.receive_only = self.receive_only.isChecked()
+        self.settings.send_to_virtual = self.send_virtual.isChecked()
+        self.settings.listen_device = self.listen.currentText()
+        self.settings.speak_incoming = self.incoming_voice.isChecked()
+        self.settings.monitor_outgoing = self.outgoing_monitor.isChecked()
         self.settings.push_to_talk = self.ptt.isChecked()
         self.settings.screen = self.screen.currentData() or 0
         self.settings.font_size = self.font_size.value()
@@ -223,11 +265,20 @@ class Window(QMainWindow):
         self.overlay.display("味方が右にいます。一緒に行こう。", "队友在右边，一起走吧。")
 
     def start(self):
-        required = (self.receive,) if self.receive_only.isChecked() else (self.mic, self.receive, self.output)
+        required = [self.receive]
+        if not self.receive_only.isChecked():
+            required.append(self.mic)
+            if self.send_virtual.isChecked():
+                required.append(self.output)
+            elif not self.outgoing_monitor.isChecked():
+                QMessageBox.information(self, "请选择日语输出", "请启用本地日语试听或虚拟麦克风发送；也可勾选仅接收队友语音。")
+                return
+        if self.incoming_voice.isChecked() or (not self.receive_only.isChecked() and self.outgoing_monitor.isChecked()):
+            required.append(self.listen)
         if not all(combo.currentText() for combo in required):
-            message = ("请选择你听队友语音的耳机回环设备。" if self.receive_only.isChecked()
-                       else "请选择实体麦克风、接收回环和开源驱动 RadioVoice Output。"
-                            "若无输出设备，请阅读 drivers/README.md；程序不会修改系统安全设置。")
+            message = "请选择所需的实体麦克风、接收回环和本地译音播放设备。"
+            if self.send_virtual.isChecked() and not self.receive_only.isChecked():
+                message += "虚拟麦克风发送还需 RadioVoice Output；说明见 drivers/README.md。"
             QMessageBox.information(self, "请选择设备", message)
             return
         self.save()
@@ -239,6 +290,7 @@ class Window(QMainWindow):
         self.service.events.finished.connect(self.finished)
         self.start_button.setEnabled(False)
         self.tabs.widget(0).setEnabled(False)
+        self.playback_controls.setEnabled(False)
         self.stop_button.setEnabled(True)
         self.status.setText("正在准备本地模型…")
         self.service.start()
@@ -271,6 +323,7 @@ class Window(QMainWindow):
         self.overlay.hide()
         self.start_button.setEnabled(True)
         self.tabs.widget(0).setEnabled(True)
+        self.playback_controls.setEnabled(True)
         self.stop_button.setEnabled(False)
         if self.closing:
             self.close()
