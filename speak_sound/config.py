@@ -30,7 +30,8 @@ class Settings:
     silence_ms: int = 400
     max_speech_seconds: float = 5.0
     operating_mode: str = "translation"
-    voice_enabled: bool = False
+    voice_enabled: bool = True
+    monitor_live_voice: bool = False
     voice_pitch: float = 0.0
     voice_effect: str = "clean"
     send_volume: int = 100
@@ -46,7 +47,9 @@ class Settings:
         self.send_volume = max(0, min(100, int(self.send_volume)))
         if self.voice_effect not in ("clean", "robot", "radio"):
             self.voice_effect = "clean"
-        if self.operating_mode not in ("translation", "voice_changer"):
+        if self.operating_mode == "voice_changer":
+            self.operating_mode = "live_translation"
+        if self.operating_mode not in ("translation", "live_translation"):
             self.operating_mode = "translation"
         if self.speed_mode not in ("fast", "balanced"):
             self.speed_mode = "balanced"

@@ -40,25 +40,9 @@ class Service:
         p = None
         children = []
         try:
-            if self.settings.operating_mode == "voice_changer" or not self.settings.receive_only:
+            live = self.settings.operating_mode == "live_translation"
+            if not self.settings.receive_only:
                 require_physical_microphone(self.settings.microphone)
-            if self.settings.operating_mode == "voice_changer":
-                p = pa.PyAudio()
-                mic = resolve(p, "microphone", self.settings.microphone)
-                output = listen = None
-                if self.settings.send_to_virtual:
-                    require_open_output(self.settings.output_device)
-                    output = resolve(p, "output", self.settings.output_device)
-                if self.settings.monitor_outgoing:
-                    listen = resolve(p, "output", self.settings.listen_device)
-                    if output is not None and self.settings.listen_device == self.settings.output_device:
-                        raise ValueError("本地监听与虚拟麦克风必须选择不同设备")
-                children = [RealtimeVoice(p, mic, output, listen, self.settings, self.stop,
-                                          self.talking, self.events.status.emit)]
-                children[0].start()
-                self.events.active.emit(True)
-                self.stop.wait()
-                return
             models = LocalModels(self.settings, self.events.status.emit, self.stop.is_set)
             if self.stop.is_set():
                 return
@@ -77,8 +61,9 @@ class Service:
             if not self.settings.receive_only and self.settings.send_to_virtual:
                 output = resolve(p, "output", self.settings.output_device)
                 require_open_output(self.settings.output_device)
-            local = None
-            if self.settings.speak_incoming or (not self.settings.receive_only and self.settings.monitor_outgoing):
+            local = listen = None
+            if self.settings.speak_incoming or (not self.settings.receive_only and
+                    (self.settings.monitor_outgoing or (live and self.settings.monitor_live_voice))):
                 listen = resolve(p, "output", self.settings.listen_device)
                 if self.settings.listen_device == self.settings.output_device and output is not None:
                     raise ValueError("本地试听请选择耳机，不能与虚拟麦克风播放端使用同一设备")
@@ -86,17 +71,24 @@ class Service:
                     if self.settings.playback_muted:
                         return 0.0
                     return (self.settings.incoming_volume if direction == "in" else self.settings.outgoing_volume) / 100
-                local = LocalPlayback(p, listen, self.stop, self.feedback, play, self.events.status.emit, volume)
+                if self.settings.speak_incoming or (not self.settings.receive_only and self.settings.monitor_outgoing):
+                    local = LocalPlayback(p, listen, self.stop, self.feedback, play, self.events.status.emit, volume)
             incoming, outgoing = queue.Queue(maxsize=2), queue.Queue(maxsize=2)
             if self.settings.receive_mode == "process":
                 captures = [ProcessCapture(self.process_target, incoming, self.stop, self.settings, self.events.status.emit)]
             else:
                 captures = [Capture(p, receive, incoming, self.stop, lambda: not self.feedback.paused(), self.settings, self.events.status.emit)]
             if not self.settings.receive_only:
-                captures.append(Capture(p, mic, outgoing, self.stop,
-                    lambda: not self.sending.is_set() and not self.feedback.paused()
-                            and (not self.settings.push_to_talk or self.talking.is_set()),
-                    self.settings, self.events.status.emit))
+                if live:
+                    captures.append(RealtimeVoice(p, mic, output,
+                        listen if self.settings.monitor_live_voice else None,
+                        self.settings, self.stop, self.talking, self.events.status.emit,
+                        translation_destination=outgoing, capture_enabled=lambda: not self.feedback.paused()))
+                else:
+                    captures.append(Capture(p, mic, outgoing, self.stop,
+                        lambda: not self.sending.is_set() and not self.feedback.paused()
+                                and (not self.settings.push_to_talk or self.talking.is_set()),
+                        self.settings, self.events.status.emit))
 
             def worker(q, direction):
                 while not self.stop.is_set():
@@ -122,6 +114,8 @@ class Service:
                                 if not self.stop.is_set():
                                     local.submit(samples, rate)
                         else:
+                            if live and not self.settings.monitor_outgoing:
+                                continue  # Translation text still appears; the virtual mic carries live original speech.
                             self.sending.set()
                             try:
                                 samples, rate = models.synthesize(translated)
@@ -129,7 +123,7 @@ class Service:
                                 if not self.stop.is_set():
                                     if self.settings.monitor_outgoing:
                                         local.submit(samples, rate, "out")
-                                    if self.settings.send_to_virtual:
+                                    if self.settings.send_to_virtual and not live:
                                         play(p, output, samples, rate, self.stop,
                                              volume=lambda: 0 if self.settings.send_muted else self.settings.send_volume / 100)
                             finally:
@@ -148,8 +142,10 @@ class Service:
             if self.settings.receive_only:
                 self.events.status.emit("队友翻译运行中 · 日语 → 中文字幕" + ("及中文播报" if self.settings.speak_incoming else ""))
             else:
-                route = "发送到虚拟麦克风" if self.settings.send_to_virtual else "仅本地试听，不向游戏发送"
-                self.events.status.emit(("按住 F8 说中文 · " if self.settings.push_to_talk else "自动检测中文讲话 · ") + route)
+                route = ("实时原声变声发送，日语译文继续显示/试听" if live
+                         else "中文 → 日语译音" + (" → 变声" if self.settings.voice_enabled else ""))
+                self.events.status.emit("双向翻译运行中 · " + route +
+                    (" · 虚拟麦克风发送已开启" if self.settings.send_to_virtual else " · 本地试听"))
             self.stop.wait()
         except Exception as exc:
             self.events.status.emit(f"无法启动：{exc}")

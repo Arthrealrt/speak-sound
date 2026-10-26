@@ -6,6 +6,12 @@ from speak_sound.config import Settings
 
 
 class ConfigTests(unittest.TestCase):
+    def test_old_voice_changer_migrates_to_combined_route(self):
+        self.assertEqual(Settings(operating_mode='voice_changer').operating_mode, 'live_translation')
+        self.assertEqual(Settings().operating_mode, 'translation')
+        self.assertTrue(Settings().voice_enabled)
+        self.assertFalse(Settings().monitor_live_voice)
+
     def test_voice_controls_and_mode_are_bounded(self):
         settings = Settings(voice_pitch=100,voice_effect='unknown',send_volume=-1,operating_mode='unknown')
         self.assertEqual(settings.voice_pitch,12)

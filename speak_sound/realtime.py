@@ -6,8 +6,10 @@ import threading
 import numpy as np
 import pyaudiowpatch as pa
 from scipy.signal import resample_poly
+import webrtcvad
 
 from .voice import VoiceProcessor
+from .segmenter import Segmenter
 
 
 def resample(samples, source_rate, target_rate):
@@ -64,16 +66,40 @@ class RealtimeSink:
             self.stream.close()
 
 
+class MicrophoneTranslationFeed:
+    """Segment the original microphone in parallel with the streaming voice effect."""
+    def __init__(self, destination, settings, report):
+        self.destination, self.report = destination, report
+        self.vad = webrtcvad.Vad(settings.vad_aggressiveness)
+        self.segmenter = Segmenter(settings.silence_ms, settings.max_speech_seconds)
+        self.pending = b""
+
+    def push(self, samples, rate, enabled):
+        mono = resample(samples, rate, 16000)
+        self.pending += (np.clip(mono, -1, 1) * 32767).astype(np.int16).tobytes()
+        while len(self.pending) >= 640:
+            frame, self.pending = self.pending[:640], self.pending[640:]
+            phrase = self.segmenter.push(frame, self.vad.is_speech(frame, 16000), enabled)
+            if phrase:
+                try:
+                    self.destination.put_nowait(phrase)
+                except queue.Full:
+                    self.report("我方翻译积压，已跳过一句；实时变声仍继续发送")
+
+
 class RealtimeVoice(threading.Thread):
-    def __init__(self, p, mic, output, listen, settings, stop, talking, report):
+    def __init__(self, p, mic, output, listen, settings, stop, talking, report,
+                 translation_destination=None, capture_enabled=lambda: True):
         super().__init__(name="realtime-voice-changer", daemon=True)
         self.p, self.mic, self.output, self.listen = p, mic, output, listen
         self.settings, self.stop, self.talking, self.report = settings, stop, talking, report
         self.raw = queue.Queue(maxsize=4)
         self.dropped = threading.Event()
+        self.translation_destination = translation_destination
+        self.capture_enabled = capture_enabled
 
     def callback(self, data, frame_count, time_info, status):
-        enabled = not self.settings.push_to_talk or self.talking.is_set()
+        enabled = self.capture_enabled() and (not self.settings.push_to_talk or self.talking.is_set())
         try:
             self.raw.put_nowait((data, enabled))
         except queue.Full:
@@ -90,15 +116,17 @@ class RealtimeVoice(threading.Thread):
             if self.listen is not None:
                 sinks.append(RealtimeSink(self.p, self.listen, self.stop,
                     lambda: 0 if self.settings.playback_muted else self.settings.outgoing_volume / 100))
-            if not sinks:
+            if not sinks and self.translation_destination is None:
                 raise ValueError("请启用虚拟麦克风输出或本地监听")
             rate = int(self.mic["defaultSampleRate"])
             channels = min(2, int(self.mic["maxInputChannels"]))
             processor = VoiceProcessor(48000)
+            feed = (MicrophoneTranslationFeed(self.translation_destination, self.settings, self.report)
+                    if self.translation_destination is not None else None)
             stream = self.p.open(format=pa.paInt16, channels=channels, rate=rate,
                                  input=True, input_device_index=int(self.mic["index"]),
                                  frames_per_buffer=round(rate * .02), stream_callback=self.callback)
-            self.report("实时变声运行中 · " + ("按住 F8 发送（无需等待松开）" if self.settings.push_to_talk else "连续发送麦克风声音"))
+            self.report("实时变声与双向翻译运行中 · " + ("按住 F8 发送原声变声，同时翻译" if self.settings.push_to_talk else "连续发送原声变声，同时翻译"))
             while not self.stop.is_set():
                 try:
                     data, enabled = self.raw.get(timeout=.1)
@@ -116,9 +144,13 @@ class RealtimeVoice(threading.Thread):
                         except queue.Empty:
                             break
                     processor = VoiceProcessor(48000)
+                    if feed is not None:
+                        feed = MicrophoneTranslationFeed(self.translation_destination, self.settings, self.report)
                     self.report("实时音频处理拥堵，已跳过积压音频")
                     continue
                 samples = np.frombuffer(data, np.int16).astype(np.float32).reshape(-1, channels).mean(axis=1) / 32768
+                if feed is not None:
+                    feed.push(samples, rate, enabled)
                 if not enabled:
                     samples.fill(0)
                 samples = resample(samples, rate, 48000)

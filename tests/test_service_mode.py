@@ -24,18 +24,23 @@ class FakeCapture:
 
 @unittest.skipUnless(SERVICE_AVAILABLE, "desktop dependencies not installed")
 class ServiceModeTests(unittest.TestCase):
-    def test_realtime_voice_does_not_load_ai_or_receive_audio(self):
+    def test_realtime_voice_keeps_models_and_receive_audio(self):
         import speak_sound.service as module
         resolved = []
         class FakeVoice(FakeCapture):
-            def __init__(self,p,mic,output,listen,settings,stop,talking,report):
+            def __init__(self,p,mic,output,listen,settings,stop,talking,report, **kwargs):
                 self.stop,self.ident=stop,None
+                self.destination = kwargs['translation_destination']
         with patch.object(module, 'LocalModels') as models, patch.object(module.pa,'PyAudio'), \
              patch.object(module,'resolve',side_effect=lambda p,kind,key: resolved.append(kind)), \
-             patch.object(module,'RealtimeVoice',FakeVoice):
+             patch.object(module,'RealtimeVoice',FakeVoice), patch.object(module,'Capture',FakeCapture):
             Service(Settings(operating_mode='voice_changer',monitor_outgoing=True)).run()
-        models.assert_not_called()
-        self.assertEqual(resolved,['microphone','output'])
+        models.assert_called_once()
+        self.assertEqual(resolved,['receive','microphone','output'])
+
+    def test_live_route_receive_only_does_not_open_my_microphone(self):
+        self.assertEqual(self.run_mode(Settings(operating_mode='live_translation',
+                         receive_only=True, speak_incoming=False)), ['receive'])
 
     def test_process_mode_does_not_resolve_device_loopback(self):
         import speak_sound.service as module
