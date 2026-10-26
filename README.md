@@ -6,7 +6,9 @@ Windows 11 本地中日双向游戏语音翻译。中文麦克风 → 日语合�
 
 **v0.4 新增：** 指定运行进程接收（含子进程）、可调分段与停顿等待、快速计算预设与 CPU 线程数、中文播报和日语试听的独立实时音量及静音。新增 ProcTap（MIT）和 psutil（BSD），不需要新驱动或修改安全启动。
 
-**当前交付状态：应用、本地模型、中文播报及日语试听可运行；开源驱动端点适配代码已完成，但未交付微软生产签名驱动，本机的游戏内虚拟麦克风发送尚不可用。** 根据用户选择，保持系统安全设置不变。所选上游驱动目前依赖测试签名；不能把它当作保留现有安全设置即可即装即用的方案。详情见 [驱动接入与限制](drivers/README.md)。
+**v0.5 新增实时变声器和开源 USB 虚拟声卡后端。** 可直接将麦克风变声发送，也可为翻译后的日语变声。内置原声、低沉、明亮、卡通、机器人、电台预设，音高范围 -12～+12 半音，支持运行时调节及独立发送音量/静音。实时变声绕过 AI 推理，按 20 ms 块连续处理。效果为本地 DSP，并非 AI 人物音色克隆或共振峰保持。
+
+**当前状态：本机已安装并加载签名 USB/IP 驱动，Secure Boot 保持开启。** Windows 已识别配对的虚拟扬声器和麦克风，并通过真实端点完成合成音变调收发验证；没有录制真人声音。新方案使用 BSD 开源 Virtual Cables 协议代码与 usbip-win2 签名发行版。其他机器仍需单独安装运输驱动；游戏 / Discord 和反作弊兼容性尚待实测。安装步骤及边界见 [驱动接入](drivers/README.md)。
 
 ## 安装
 
@@ -24,13 +26,25 @@ powershell -ExecutionPolicy Bypass -File .\setup.ps1
 .\setup.ps1 -PythonExe 'C:\Python312\python.exe' -WhisperModel base
 ```
 
-安装脚本只向项目 `.venv` 和 `models` 写入依赖与模型，不安装音频驱动、不修改系统默认设备。依赖下载失败后重跑即可；模型下载可续传。模型目录不要提交到 GitHub。
+安装脚本向项目 `.venv`、`models` 和 `bin` 部署依赖、模型和用户态声卡后端。后端用 Go 1.22+ 编译；没有 Go 时在项目 work 内下载、校验便携工具链，不改系统 PATH。默认不安装音频驱动、不改系统默认设备。`-SkipVirtualMic` 可跳过后端构建。依赖下载失败后重跑即可；模型下载可续传。模型目录不要提交到 GitHub。
 
 安装完成双击 **`start.cmd`**。代码位于 `speak_sound/`，配置保存在本目录 `config.json`。目录需要可写。
 
 `setup.ps1` 使用 `requirements-lock.txt` 安装经过本机验证的确切依赖版本；`requirements.txt` 保留兼容版本范围供开发使用。
 
 ## 虚拟麦克风与设备连接
+
+### v0.5 推荐路径：Speak Sound 虚拟 USB 声卡
+
+1. 按 [drivers/README.md](drivers/README.md) 单独准备并安装签名开源 USB/IP 运输驱动。安装会短暂重启 USB 设备，需避开游戏、会议和文件传输。无需修改安全启动。
+2. 在设备页点击「连接 Speak Sound 虚拟麦克风」，等待后刷新设备。
+3. 本软件发送输出选 `扬声器 / Speakers (Speak Sound Virtual Cable 01)`，勾选「向虚拟麦克风发送声音」。
+4. 游戏 / Discord 输入选 `麦克风 / Microphone (Speak Sound Virtual Cable 01)`，聊天输出保持耳机。
+5. 顶部选择「实时变声器」直接变声；或保持双向翻译，在变声器页启用日语译音效果。实时模式 F8 按住期间连续发送，翻译模式 F8 松开后才生成译音。
+
+音高、附加音效、启用开关、发送音量和静音可运行时调整。实时模式不采集队友、不运行识别/翻译/合成；关闭应用或断开会关闭本软件虚拟声卡。实时本地监听必须戴耳机以避免啸叫，软件没有声学回声消除。
+
+### 旧 RadioVoice 可选接入与本地试听
 
 **无需虚拟驱动的本地播放：** 选择实体麦克风，接收来源选择「指定运行进程」并刷新选择 Discord 或游戏；也可选整个耳机 `[Loopback]`。在「译音播放」页选择耳机，保持中文播报与日语试听勾选。不要勾选「向虚拟麦克风发送日语」，即可同时听到两种译音，但日语不会传给队友。
 
@@ -60,7 +74,7 @@ powershell -ExecutionPolicy Bypass -File .\setup.ps1
 
 窗口底部两个音量滑条分别控制中文播报和日语试听，范围 0～100%，运行中即时生效；「静音本地译音」同时静音两者。这些控制只调节本软件的本地声音，不改系统音量，也不影响虚拟麦克风发送的音量。
 
-**本地译音播放不会创建 Windows 虚拟扬声器。** 若要在系统设备列表出现独立的虚拟扬声器和虚拟麦克风，仍需驱动及微软生产签名。开源代码同样可以申请生产签名；本项目当前没有提供经过该流程的驱动包。变声器式路径与当前交付边界见 [drivers/README.md](drivers/README.md)。
+只选择耳机播放不会创建系统设备。v0.5 设备页的连接按钮通过开源 USB/IP 后端创建配对的虚拟播放端与麦克风端；Windows 音频类驱动由系统提供，USB 运输层来自上游签名发行版。实际状态和安装说明见 [drivers/README.md](drivers/README.md)。窗口下方的虚拟麦克风发送音量/静音与本地监听独立。
 
 回声保护：指定进程模式只采集目标及其子进程的播放声音，不会采集本软件译音，译音播放时继续接收队友。整个设备模式在本地译音播放期间及结束后约 0.3 秒暂停接收，以避免循环翻译，可能漏收重叠讲话。两种模式均暂停此时的实体麦克风采集；这不是声学回声消除，建议戴耳机。
 
@@ -105,6 +119,8 @@ powershell -ExecutionPolicy Bypass -File .\setup.ps1
 | 日语语音合成 | pyopenjtalk-plus / OpenJTalk | 本机 CPU |
 | 中文语音合成 | MeloTTS Chinese ONNX / sherpa-onnx | 本机 CPU，2 线程 |
 | 虚拟音频端点适配 | RadioVoice GPL 驱动 | 需另行准备，尚未本机验证 |
+| v0.5 虚拟 USB 声卡 | BSD 用户态后端 + BSD usbip-win2 签名运输驱动 | 本机实际端点已通过合成音验证，其他机器需单独安装运输驱动 |
+| v0.5 实时变声 | NumPy / SciPy DSP，不需新模型 | 本机 CPU，直接处理麦克风 / 日语译音 |
 
 默认停顿约 400 ms 后提交、连续讲话约 5 秒分段，可在界面调整；最短有效讲话约 160 ms。保留约 200 ms 前导音频，减少切掉字头。长句分段可能影响翻译上下文。每个方向最多排队两句，队列满会提示并跳过新句，避免无限积压。识别和翻译模型分别加锁，双向共享模型节省内存；繁忙时两个方向可能相互等待。记录中的耗时只包含识别与翻译，不包含录音、分句等待、排队、语音合成和播放，不代表完整端到端延迟。
 
@@ -115,7 +131,7 @@ powershell -ExecutionPolicy Bypass -File .\setup.ps1
 ## 常见问题
 
 - **游戏全屏看不到字幕：** 使用无边框窗口或窗口模式。独占全屏可能覆盖桌面置顶窗口。字幕穿透鼠标，不抢游戏焦点。
-- **对方听不到：** 先确认已安装兼容的开源驱动；本软件输出选 RadioVoice Output，聊天输入选 RadioVoice Microphone，并确保译文播放时允许发送。当前未验证完整游戏链路。
+- **对方听不到：** 先连接虚拟声卡，本软件选 Speak Sound Virtual Cable 播放端，聊天输入选其麦克风端（旧 RadioVoice 使用其配对端点），并确保实际声音播放时允许发送。当前未验证完整游戏链路。
 - **识别到游戏台词或音乐：** 若聊天与游戏是不同进程，选聊天进程；同一个游戏进程混音仍需独立音频路由，语音检测不能自动区分队友、配音和其他人声。
 - **进程重启后不再接收：** 停止后刷新进程，重新选择新的 PID 再开始，不会自动录制同名的新进程。
 - **设备失效：** 停止、重新连接设备、刷新并重选。设置按设备名称保存，设备更名后需重选。
@@ -146,5 +162,7 @@ powershell -ExecutionPolicy Bypass -File .\setup.ps1
 - [M2M100 int8 转换权重](https://huggingface.co/jncraton/m2m100_418M-ct2-int8/tree/7c1b2620a4e58dacecbd8bf89cfd6da7eb9eb7b0)：固定版本下载；分词器来自 Meta 原始模型的固定版本。
 - [pyopenjtalk-plus](https://github.com/tsukumijima/pyopenjtalk-plus)：本地日语合成与辞书，随包许可证见上游。
 - [RadioVoice 驱动源码](https://github.com/doctorspider42/radio-voice/tree/main/driver)：GPL-3.0-or-later；接入限制见 drivers/README.md。
+- [Virtual Cables 固定源码](https://github.com/tarekwasfy01/Virtual-Cables/tree/8a819c29971d30a73955178ac8a3aac00b1a5230)：BSD-2-Clause，随项目保留源码、许可及修改说明，见 native/virtual-mic/NOTICE.md。
+- [usbip-win2](https://github.com/vadimgrn/usbip-win2)：BSD-2-Clause，使用上游签名发行包，单独安装。
 
 本仓库新编写代码采用 MIT；第三方库、模型、音色、音频驱动各自遵循其许可证。翻译模型没有针对游戏术语专门训练，可能误译，需结合上下文使用。

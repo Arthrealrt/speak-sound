@@ -7,9 +7,11 @@ import pyaudiowpatch as pa
 
 from .audio import Capture, play, resolve
 from .models import LocalModels
-from .routing import require_open_output
+from .routing import require_open_output, require_physical_microphone, is_virtual_microphone
 from .playback import FeedbackGate, LocalPlayback
 from .process_audio import ProcessCapture
+from .realtime import RealtimeVoice
+from .voice import process_utterance
 
 
 class Events(QObject):
@@ -38,6 +40,25 @@ class Service:
         p = None
         children = []
         try:
+            if self.settings.operating_mode == "voice_changer" or not self.settings.receive_only:
+                require_physical_microphone(self.settings.microphone)
+            if self.settings.operating_mode == "voice_changer":
+                p = pa.PyAudio()
+                mic = resolve(p, "microphone", self.settings.microphone)
+                output = listen = None
+                if self.settings.send_to_virtual:
+                    require_open_output(self.settings.output_device)
+                    output = resolve(p, "output", self.settings.output_device)
+                if self.settings.monitor_outgoing:
+                    listen = resolve(p, "output", self.settings.listen_device)
+                    if output is not None and self.settings.listen_device == self.settings.output_device:
+                        raise ValueError("本地监听与虚拟麦克风必须选择不同设备")
+                children = [RealtimeVoice(p, mic, output, listen, self.settings, self.stop,
+                                          self.talking, self.events.status.emit)]
+                children[0].start()
+                self.events.active.emit(True)
+                self.stop.wait()
+                return
             models = LocalModels(self.settings, self.events.status.emit, self.stop.is_set)
             if self.stop.is_set():
                 return
@@ -47,6 +68,8 @@ class Service:
                 if self.process_target is None or not self.process_target.alive():
                     raise ValueError("请选择仍在运行的接收进程")
             else:
+                if is_virtual_microphone(self.settings.receive_device):
+                    raise ValueError("接收不能选择本软件的发送声卡，以防循环翻译")
                 receive = resolve(p, "receive", self.settings.receive_device)
             mic = output = None
             if not self.settings.receive_only:
@@ -102,11 +125,13 @@ class Service:
                             self.sending.set()
                             try:
                                 samples, rate = models.synthesize(translated)
+                                samples = process_utterance(samples, rate, self.settings)
                                 if not self.stop.is_set():
                                     if self.settings.monitor_outgoing:
                                         local.submit(samples, rate, "out")
                                     if self.settings.send_to_virtual:
-                                        play(p, output, samples, rate, self.stop)
+                                        play(p, output, samples, rate, self.stop,
+                                             volume=lambda: 0 if self.settings.send_muted else self.settings.send_volume / 100)
                             finally:
                                 self.sending.clear()
                     except Exception as exc:

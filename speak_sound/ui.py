@@ -2,10 +2,12 @@ import ctypes
 import html
 import os
 import sys
+import threading
+import subprocess
 from pathlib import Path
 
 import pyaudiowpatch as pa
-from PySide6.QtCore import Qt, QTimer, QLocale
+from PySide6.QtCore import Qt, QTimer, QLocale, Signal
 from PySide6.QtGui import QCloseEvent, QFont, QFontDatabase
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFormLayout,
     QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton, QSpinBox,
@@ -14,8 +16,10 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFormLayout,
 from .audio import devices
 from .config import Settings
 from .service import Service
-from .routing import is_open_output
+from .routing import is_open_output, is_virtual_microphone, is_default_input_alias
 from .process_audio import running_processes
+from .virtual_mic import VirtualMicrophone
+from .voice import PRESETS
 
 
 class Subtitle(QWidget):
@@ -58,6 +62,8 @@ class Subtitle(QWidget):
 
 
 class Window(QMainWindow):
+    virtual_finished = Signal(str)
+
     def __init__(self):
         super().__init__()
         try:
@@ -67,6 +73,9 @@ class Window(QMainWindow):
         self.service = None
         self.closing = False
         self.stop_requested = False
+        self.virtual = VirtualMicrophone()
+        self.virtual_busy = False
+        self.virtual_finished.connect(self.virtual_ready)
         self.overlay = Subtitle(self.settings)
         self.setWindowTitle("Speak Sound · 中日游戏语音翻译")
         self.resize(850, 700)
@@ -77,6 +86,11 @@ class Window(QMainWindow):
         title.setStyleSheet("font-size: 32px; font-weight: 700; color: #aab9ff;")
         layout.addWidget(title)
         layout.addWidget(QLabel("中文 → 日语虚拟麦克风    /    日语 → 屏幕底部中文字幕"))
+        self.operating_mode = QComboBox()
+        self.operating_mode.addItem("双向翻译（可为日语译音变声）", "translation")
+        self.operating_mode.addItem("实时变声器（直接处理麦克风，不翻译）", "voice_changer")
+        self.operating_mode.setCurrentIndex(self.operating_mode.findData(self.settings.operating_mode))
+        layout.addWidget(self.operating_mode)
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs)
         controls = QWidget()
@@ -102,12 +116,12 @@ class Window(QMainWindow):
         process_layout.addWidget(self.process_refresh)
         form.addRow("接收进程（可输入名称筛选）", process_row)
         form.addRow("接收语音（耳机/音频线的回环）", self.receive)
-        form.addRow("日语输出（虚拟音频线播放端）", self.output)
+        form.addRow("发送输出（虚拟音频线播放端）", self.output)
         self.receive_only = QCheckBox("仅接收队友语音（关闭我的麦克风）")
         self.receive_only.setChecked(self.settings.receive_only)
         self.receive_only.toggled.connect(self.update_mode)
         form.addRow(self.receive_only)
-        self.send_virtual = QCheckBox("向虚拟麦克风发送日语（需兼容开源驱动）")
+        self.send_virtual = QCheckBox("向虚拟麦克风发送声音")
         self.send_virtual.setChecked(self.settings.send_to_virtual)
         self.send_virtual.toggled.connect(self.update_mode)
         form.addRow(self.send_virtual)
@@ -121,6 +135,12 @@ class Window(QMainWindow):
         self.route_status = QLabel()
         self.route_status.setWordWrap(True)
         form.addRow("开源虚拟麦克风", self.route_status)
+        self.virtual_button = QPushButton("连接 Speak Sound 虚拟麦克风")
+        self.virtual_button.clicked.connect(self.toggle_virtual)
+        form.addRow(self.virtual_button)
+        install = QPushButton("查看 / 准备开源驱动安装包")
+        install.clicked.connect(self.prepare_driver)
+        form.addRow(install)
         self.screen = QComboBox()
         for index, screen in enumerate(QApplication.screens()):
             self.screen.addItem(f"屏幕 {index + 1} · {screen.name()}", index)
@@ -161,6 +181,48 @@ class Window(QMainWindow):
         hint.setWordWrap(True)
         playback_form.addRow(hint)
         self.tabs.addTab(self.playback_controls, "译音播放")
+        voice_page = QWidget()
+        voice_form = QFormLayout(voice_page)
+        self.voice_enable = QCheckBox("启用变声（实时麦克风或发送的日语译音）")
+        self.voice_enable.setChecked(self.settings.voice_enabled)
+        voice_form.addRow(self.voice_enable)
+        self.voice_preset = QComboBox()
+        self.voice_preset.addItem("自定义", "custom")
+        for key, (label, pitch, effect) in PRESETS.items():
+            self.voice_preset.addItem(label, key)
+        voice_form.addRow("音效预设", self.voice_preset)
+        self.voice_pitch = QDoubleSpinBox()
+        self.voice_pitch.setRange(-12, 12)
+        self.voice_pitch.setDecimals(1)
+        self.voice_pitch.setSingleStep(.5)
+        self.voice_pitch.setSuffix(" 半音")
+        self.voice_pitch.setValue(self.settings.voice_pitch)
+        voice_form.addRow("音高（低沉 ← 0 → 明亮）", self.voice_pitch)
+        self.voice_effect = QComboBox()
+        for label, key in (("干净", "clean"), ("机器人", "robot"), ("电台", "radio")):
+            self.voice_effect.addItem(label, key)
+        self.voice_effect.setCurrentIndex(self.voice_effect.findData(self.settings.voice_effect))
+        voice_form.addRow("附加音效", self.voice_effect)
+        matching = next((key for key, (_, pitch, effect) in PRESETS.items()
+                         if pitch == self.settings.voice_pitch and effect == self.settings.voice_effect), "custom")
+        self.voice_preset.setCurrentIndex(self.voice_preset.findData(matching))
+        self.voice_preset.currentIndexChanged.connect(self.apply_voice_preset)
+        self.voice_enable.toggled.connect(self.update_voice)
+        self.voice_pitch.valueChanged.connect(self.update_voice)
+        self.voice_effect.currentIndexChanged.connect(self.update_voice)
+        voice_hint = QLabel("顶部选择「实时变声器」可直接把麦克风变声后发送，无需载入 AI 模型；"
+                            "F8 按住期间连续发送，不等待松开。双向翻译模式则为发送的日语译音变声，"
+                            "队友中文播报保持原音色。\n\n"
+                            "音高、音效与启用开关可运行时调整。此功能为本地 DSP 音效，"
+                            "没有 AI 音色克隆或共振峰保持，不能保证模仿特定人物。\n\n"
+                            "实时变声监听必须戴耳机，避免扬声器声音进入麦克风形成啸叫。"
+                            "Windows 虚拟麦克风需先在设备页连接；仅试听不需要驱动。")
+        voice_hint.setWordWrap(True)
+        voice_form.addRow(voice_hint)
+        voice_scroll = QScrollArea()
+        voice_scroll.setWidgetResizable(True)
+        voice_scroll.setWidget(voice_page)
+        self.tabs.addTab(voice_scroll, "变声器")
         self.timing_controls = QWidget()
         timing_form = QFormLayout(self.timing_controls)
         self.speed = QComboBox()
@@ -231,6 +293,15 @@ class Window(QMainWindow):
         self.volume_save = QTimer(self)
         self.volume_save.setSingleShot(True)
         self.volume_save.timeout.connect(self.settings.save)
+        self.send_volume = QSlider(Qt.Orientation.Horizontal)
+        self.send_volume.setRange(0, 100)
+        self.send_volume.setValue(self.settings.send_volume)
+        self.send_volume.valueChanged.connect(self.update_volume)
+        volume_form.addRow("虚拟麦克风发送音量", self.send_volume)
+        self.send_mute = QCheckBox("静音虚拟麦克风发送（不影响本地监听）")
+        self.send_mute.setChecked(self.settings.send_muted)
+        self.send_mute.toggled.connect(self.update_volume)
+        volume_form.addRow(self.send_mute)
         self.history = QTextEdit()
         self.history.setReadOnly(True)
         self.history.document().setMaximumBlockCount(300)
@@ -243,11 +314,11 @@ class Window(QMainWindow):
             "本地双向试听：选择实体麦克风和接收回环，在「译音播放」页选择耳机，"
             "启用中文播报与日语试听；保持虚拟麦克风发送关闭即可无需驱动使用。\n\n"
             "只收队友：勾选「仅接收队友语音」；若只看字幕，再关闭「译音播放」页的中文播报。\n\n"
-            "2. 开源音频驱动接入说明见 drivers/README.md。当前支持 RadioVoice 的 GPL 驱动端点。"
-            "未安装驱动时，虚拟麦克风尚不可用。\n\n"
+            "2. 按 drivers/README.md 安装签名开源 USB/IP 运输驱动，再在设备页点击连接虚拟麦克风。"
+            "这会创建 Speak Sound Virtual Cable 的播放端和麦克风端；保持系统安全设置不变。\n\n"
             "3. 本软件：实体麦克风选你的麦克风；接收语音选耳机对应的 [Loopback]；"
-            "日语输出选 RadioVoice Output。\n\n"
-            "4. 游戏 / Discord / 其他语音软件：输入设备选 RadioVoice Microphone；输出设备选耳机。"
+            "发送输出选 Speak Sound Virtual Cable 的播放端。\n\n"
+            "4. 游戏 / Discord / 其他语音软件：输入设备选 Speak Sound Virtual Cable 的麦克风端；输出设备选耳机。"
             "目标软件使用语音激活或持续输入；它的按键说话必须覆盖翻译播放时段，"
             "本软件 F8 松开后才开始翻译。\n\n"
             "5. 开始翻译，按住 F8 说中文，松开。日语队友讲话会在屏幕底部显示中文。\n\n"
@@ -256,8 +327,10 @@ class Window(QMainWindow):
             "不能在同一个游戏进程中分离队友语音与游戏音效。进程退出后停止，重启需重新选择。\n\n"
             "独占全屏游戏可能遮住字幕，请选择无边框窗口。字幕窗口不接收鼠标点击。\n\n"
             "内置 OpenJTalk 的 Mei 日语声库采用 CC BY 3.0，归属信息见 DEPENDENCIES.md。\n\n"
-            "此版本保持系统安全设置不变，不自动安装内核驱动，不开启测试签名。"
-            "上游驱动当前要求测试模式，尚未验证可在你保留现有安全设置时使用。\n\n"
+            "签名 USB/IP 驱动需单独安装；安装会短暂重启 USB 设备。软件不修改安全启动、"
+            "测试签名或证书存储。旧 RadioVoice 仍为可选接入。\n\n"
+            "变声：顶部选择实时变声器可直接处理麦克风；也可在翻译模式给日语译音变声。"
+            "在变声器页选择预设或调整半音；实时监听请戴耳机。\n\n"
             "在「速度与延迟」页调整停顿等待、最长分段和计算模式；下方音量与静音可实时调整。"
             "实际延迟取决于硬件、模型和排队情况，记录页显示处理耗时。"
         )
@@ -279,7 +352,62 @@ class Window(QMainWindow):
         self.poll.start(20)
         self.refresh_devices()
         self.refresh_processes()
+        self.operating_mode.currentIndexChanged.connect(self.update_mode)
         self.update_mode()
+
+    def apply_voice_preset(self):
+        key = self.voice_preset.currentData()
+        if key in PRESETS:
+            _, pitch, effect = PRESETS[key]
+            self.voice_pitch.setValue(pitch)
+            self.voice_effect.setCurrentIndex(self.voice_effect.findData(effect))
+            self.voice_enable.setChecked(True)
+            self.update_voice()
+
+    def update_voice(self):
+        self.settings.voice_enabled = self.voice_enable.isChecked()
+        self.settings.voice_pitch = self.voice_pitch.value()
+        self.settings.voice_effect = self.voice_effect.currentData()
+        if hasattr(self, "volume_save"):
+            self.volume_save.start(350)
+
+    def prepare_driver(self):
+        QMessageBox.information(self, "开源虚拟麦克风", "驱动来源为 BSD 开源 usbip-win2 的签名发行版。\n"
+            "此按钮只下载、核对哈希及签名，不安装。安装方法和 USB 设备短暂重启说明见 drivers/README.md。")
+        subprocess.Popen(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                          str(Path(__file__).resolve().parents[1] / "drivers/setup_virtual_mic.ps1")],
+                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        self.status.setText("正在后台准备驱动包，保存在 downloads；此步骤不安装驱动")
+
+    def toggle_virtual(self):
+        if self.virtual_busy or self.service:
+            return
+        self.virtual_busy = True
+        self.virtual_button.setEnabled(False)
+        self.status.setText("正在连接 / 断开虚拟麦克风…")
+        def work():
+            try:
+                if self.virtual.connected:
+                    self.virtual.stop()
+                    message = "已断开 Speak Sound 虚拟麦克风"
+                else:
+                    self.virtual.start()
+                    message = "已连接虚拟 USB 声卡；刷新设备后选其播放端，游戏选择同名麦克风端"
+            except Exception as exc:
+                message = f"虚拟麦克风：{exc}"
+            self.virtual_finished.emit(message)
+        threading.Thread(target=work, name="virtual-microphone-manager", daemon=True).start()
+
+    def virtual_ready(self, message):
+        self.virtual_busy = False
+        self.virtual_button.setEnabled(True)
+        self.virtual_button.setText("断开 Speak Sound 虚拟麦克风" if self.virtual.connected else "连接 Speak Sound 虚拟麦克风")
+        self.refresh_devices()
+        self.status.setText(message)
+        if self.virtual.connected:
+            QTimer.singleShot(1500, self.refresh_devices)
+        if self.closing:
+            self.close()
 
     def refresh_processes(self):
         current = self.process.currentData()
@@ -300,6 +428,8 @@ class Window(QMainWindow):
         self.settings.incoming_volume = self.incoming_volume.value()
         self.settings.outgoing_volume = self.outgoing_volume.value()
         self.settings.playback_muted = self.mute.isChecked()
+        self.settings.send_volume = self.send_volume.value()
+        self.settings.send_muted = self.send_mute.isChecked()
         for slider, label in zip((self.incoming_volume, self.outgoing_volume), self.volume_labels):
             label.setText(f"{slider.value()}%")
         self.volume_save.start(350)
@@ -308,18 +438,28 @@ class Window(QMainWindow):
         if not hasattr(self, "outgoing_monitor"):
             return
         sending = not self.receive_only.isChecked()
+        live = self.operating_mode.currentData() == "voice_changer"
+        sending = live or sending
         by_process = self.receive_mode.currentData() == "process"
-        self.process.setEnabled(by_process)
-        self.process_refresh.setEnabled(by_process)
-        self.receive.setEnabled(not by_process)
+        self.receive_mode.setEnabled(not live)
+        self.receive_only.setEnabled(not live)
+        self.incoming_voice.setEnabled(not live)
+        self.process.setEnabled(not live and by_process)
+        self.process_refresh.setEnabled(not live and by_process)
+        self.receive.setEnabled(not live and not by_process)
         self.mic.setEnabled(sending)
         self.output.setEnabled(sending and self.send_virtual.isChecked())
         self.send_virtual.setEnabled(sending)
         self.ptt.setEnabled(sending)
         self.outgoing_monitor.setEnabled(sending)
-        self.listen.setEnabled(self.incoming_voice.isChecked() or (sending and self.outgoing_monitor.isChecked()))
+        self.listen.setEnabled((not live and self.incoming_voice.isChecked()) or (sending and self.outgoing_monitor.isChecked()))
+        self.ptt.setText("按住 F8 连续发送变声，松开停止" if live else "按住 F8 说中文，松开后发送翻译（推荐）")
+        self.outgoing_monitor.setText("监听我的实时变声（请戴耳机）" if live else "试听我说中文后生成的日语")
         if hasattr(self, "status") and self.service is None:
-            if not sending:
+            self.start_button.setText("开始变声" if live else "开始翻译")
+            if live:
+                self.status.setText("就绪 · 实时变声，不翻译；可先开启本地监听测试")
+            elif not sending:
                 self.status.setText("就绪 · 接收队友语音，显示字幕及可选中文播报")
             else:
                 self.status.setText("就绪 · " + ("启用虚拟麦克风发送" if self.send_virtual.isChecked()
@@ -345,6 +485,11 @@ class Window(QMainWindow):
                     choices = [(key, index) for key, index in choices if is_open_output(key)]
                 elif kind == "listen":
                     choices = [(key, index) for key, index in choices if not is_open_output(key)]
+                elif kind == "microphone":
+                    choices = [(key, index) for key, index in choices
+                               if not is_virtual_microphone(key) and not is_default_input_alias(key)]
+                elif kind == "receive":
+                    choices = [(key, index) for key, index in choices if not is_virtual_microphone(key)]
                 for key, _ in choices:
                     combo.addItem(key)
                 index = combo.findText(current)
@@ -364,12 +509,13 @@ class Window(QMainWindow):
                 else:
                     combo.setPlaceholderText("请选择你的实体麦克风")
                     combo.setCurrentIndex(-1)
-            self.route_status.setText("已检测到开源驱动端点；实际收发仍需联调" if self.output.count()
-                                      else "未检测到兼容开源驱动 · 虚拟麦克风尚不可用")
+            self.route_status.setText("已检测到开源虚拟播放端点；游戏选择配对的麦克风" if self.output.count()
+                                      else "尚未连接开源虚拟声卡 · 安装签名 USB/IP 驱动后点击连接")
         except Exception as exc:
             self.status.setText(f"读取音频设备失败：{exc}")
 
     def save(self):
+        self.settings.operating_mode = self.operating_mode.currentData()
         self.settings.microphone = self.mic.currentText()
         self.settings.receive_device = self.receive.currentText()
         self.settings.receive_mode = self.receive_mode.currentData()
@@ -394,25 +540,29 @@ class Window(QMainWindow):
         self.overlay.display("味方が右にいます。一緒に行こう。", "队友在右边，一起走吧。")
 
     def start(self):
-        by_process = self.receive_mode.currentData() == "process"
+        if self.virtual_busy:
+            QMessageBox.information(self, "虚拟麦克风连接中", "请等待虚拟声卡连接结束后再开始。")
+            return
+        live = self.operating_mode.currentData() == "voice_changer"
+        by_process = not live and self.receive_mode.currentData() == "process"
         target = self.process.currentData() if by_process else None
         if by_process and (target is None or self.process.currentText() != f"{target.name} · PID {target.pid}" or not target.alive()):
             QMessageBox.information(self, "请选择进程", "请刷新并从列表选择仍在运行的游戏或聊天进程。")
             return
-        required = [] if by_process else [self.receive]
-        if not self.receive_only.isChecked():
+        required = [] if by_process or live else [self.receive]
+        if live or not self.receive_only.isChecked():
             required.append(self.mic)
             if self.send_virtual.isChecked():
                 required.append(self.output)
             elif not self.outgoing_monitor.isChecked():
-                QMessageBox.information(self, "请选择日语输出", "请启用本地日语试听或虚拟麦克风发送；也可勾选仅接收队友语音。")
+                QMessageBox.information(self, "请选择声音输出", "请启用本地监听或虚拟麦克风发送；翻译模式也可勾选仅接收队友语音。")
                 return
-        if self.incoming_voice.isChecked() or (not self.receive_only.isChecked() and self.outgoing_monitor.isChecked()):
+        if (not live and self.incoming_voice.isChecked()) or ((live or not self.receive_only.isChecked()) and self.outgoing_monitor.isChecked()):
             required.append(self.listen)
         if not all(combo.currentText() for combo in required):
             message = "请选择所需的实体麦克风、接收回环和本地译音播放设备。"
             if self.send_virtual.isChecked() and not self.receive_only.isChecked():
-                message += "虚拟麦克风发送还需 RadioVoice Output；说明见 drivers/README.md。"
+                message += "虚拟麦克风发送需 Speak Sound Virtual Cable 播放端；说明见 drivers/README.md。"
             QMessageBox.information(self, "请选择设备", message)
             return
         self.save()
@@ -423,11 +573,12 @@ class Window(QMainWindow):
         self.service.events.transcript.connect(self.record)
         self.service.events.finished.connect(self.finished)
         self.start_button.setEnabled(False)
+        self.operating_mode.setEnabled(False)
         self.tabs.widget(0).setEnabled(False)
         self.playback_controls.setEnabled(False)
         self.timing_controls.setEnabled(False)
         self.stop_button.setEnabled(True)
-        self.status.setText("正在准备本地模型…")
+        self.status.setText("正在启动实时音频…" if live else "正在准备本地模型…")
         self.service.start()
 
     def poll_ptt(self):
@@ -457,6 +608,7 @@ class Window(QMainWindow):
             self.status.setText("已停止 · 可以调整设置后重新开始")
         self.overlay.hide()
         self.start_button.setEnabled(True)
+        self.operating_mode.setEnabled(True)
         self.tabs.widget(0).setEnabled(True)
         self.playback_controls.setEnabled(True)
         self.timing_controls.setEnabled(True)
@@ -465,11 +617,15 @@ class Window(QMainWindow):
             self.close()
 
     def closeEvent(self, event: QCloseEvent):
-        if self.service:
+        if self.virtual_busy:
+            self.closing = True
+            event.ignore()
+        elif self.service:
             self.closing = True
             self.stop()
             event.ignore()
         else:
+            self.virtual.stop()
             self.overlay.close()
             event.accept()
 

@@ -63,6 +63,18 @@
     ]
   },
   {
+    "name": "comtypes",
+    "version": "1.4.17",
+    "license_expression": "MIT",
+    "license": null,
+    "license_classifiers": [],
+    "project_urls": [
+      "Source, https://github.com/enthought/comtypes",
+      "Download, https://github.com/enthought/comtypes/releases",
+      "Issues, https://github.com/enthought/comtypes/issues"
+    ]
+  },
+  {
     "name": "ctranslate2",
     "version": "4.8.3",
     "license_expression": null,
@@ -220,6 +232,20 @@
       "License :: OSI Approved :: Apache Software License"
     ],
     "project_urls": []
+  },
+  {
+    "name": "pycaw",
+    "version": "20260927",
+    "license_expression": "MIT",
+    "license": null,
+    "license_classifiers": [],
+    "project_urls": [
+      "Homepage, https://github.com/AndreMiras/pycaw",
+      "Documentation, https://andremiras.github.io/pycaw/",
+      "Repository, https://github.com/AndreMiras/pycaw.git",
+      "Issues, https://github.com/AndreMiras/pycaw/issues",
+      "Changelog, https://github.com/AndreMiras/pycaw/blob/main/CHANGELOG.md"
+    ]
   },
   {
     "name": "pydantic",

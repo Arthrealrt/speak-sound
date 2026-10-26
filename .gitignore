@@ -12,3 +12,5 @@ build/
 *.wav
 verification.json
 work/
+bin/
+downloads/

@@ -8,6 +8,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m pip install -c requirements-lock.txt numpy scipy PyAudioWPatch webrtcvad-wheels huggingface-hub requests PySide6-Essentials psutil proc-tap
+      - run: python -m pip install -c requirements-lock.txt numpy scipy PyAudioWPatch webrtcvad-wheels huggingface-hub requests PySide6-Essentials psutil proc-tap pycaw comtypes
       - run: python -m compileall -q speak_sound tools tests
       - run: python -m unittest discover -s tests -v
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.3'
+          cache: false
+      - run: go test ./...
+        working-directory: native/virtual-mic
+      - run: go build -trimpath -o ../../bin/speak-sound-mic.exe ./cmd/speak-sound-mic
+        working-directory: native/virtual-mic

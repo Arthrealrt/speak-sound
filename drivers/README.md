@@ -1,34 +1,68 @@
-# 开源虚拟麦克风接入
+# Speak Sound 开源虚拟麦克风
 
-当前按 [RadioVoice 驱动源码固定版本](https://github.com/doctorspider42/radio-voice/tree/872f7d570f093f94b514ebdcfbbb1a23ecc458d9/driver)的端点名称与接口说明适配，许可为 GPL-3.0-or-later。驱动独立安装，Speak Sound 通过 Windows 音频接口使用端点；没有复制或改写该驱动源码，也不分发其二进制。
+v0.5 新增用户态虚拟 USB 声卡。信号路径：
 
-| 端点 | 使用位置 |
-| --- | --- |
-| RadioVoice Output | Speak Sound 的日语输出 |
-| RadioVoice Microphone | 游戏 / Discord 的麦克风输入 |
+`实体麦克风 / 日语译音 → Speak Sound 变声 → Speak Sound Virtual Cable 播放端 → 本地 USB/IP → 同名麦克风端 → 游戏 / Discord`
 
-驱动的用途是将播放端信号转给录音端；支持的格式由上游定义，本软件写入 48 kHz、16 位 PCM。上游说明及编译过程见其 [driver/README.md](https://github.com/doctorspider42/radio-voice/blob/main/driver/README.md)。单独构建驱动即可，不需要其完整音效处理应用或其他外部音频线。
+用户态 USB Audio Class 1.0 源码来自 [Virtual Cables 固定版本](https://github.com/tarekwasfy01/Virtual-Cables/tree/8a819c29971d30a73955178ac8a3aac00b1a5230)，BSD-2-Clause，随项目发布在 `native/virtual-mic`。修改说明见其 NOTICE.md。Windows 使用系统自带的 USB 音频类驱动；USB 运输层使用开源 [usbip-win2](https://github.com/vadimgrn/usbip-win2)，BSD-2-Clause。
 
-## 当前限制
+USB/IP 官方说明其发行驱动为 WHLK / attestation signed，正式签名发行包不需要测试模式。这条路线与旧 RadioVoice 测试签名方案不同。软件不改 Secure Boot、测试签名、代码完整性策略或证书存储。
 
-变声器式方案完全可实现：应用把合成语音写入虚拟播放端，驱动将音频交给虚拟录音端，游戏选择后者作为麦克风；本地监听再将同一段语音播放到耳机。虚拟扬声器自身并不等于实体发声设备。
+## 当前状态
 
-不修改安全启动的正常产品使用满足 Windows 加载策略的生产签名驱动。开源驱动也可以申请微软签名，并非开源就必须测试模式。生产签名需要发布方准备证书及硬件开发者账户等材料，详见 [Microsoft 驱动签名要求](https://learn.microsoft.com/en-us/windows-hardware/drivers/dashboard/code-signing-reqs)。当前交付的是用户态翻译与播放程序、端点接入；没有交付新编译且通过微软生产签名的内核驱动。
+用户态后端源码、构建脚本、本机 `bin/speak-sound-mic.exe`、连接按钮、实时及翻译变声均已准备。Go 协议测试及已编译 EXE 的 localhost 设备枚举与关闭检查通过。本机已安装并加载签名运输驱动，安装前后 Secure Boot 均为 true，Windows 已创建配对端点。合成 440 Hz 音变调 -5 半音后经播放端进入虚拟麦克风，捕获主峰约 327 Hz，验证实际端点可用；未录制真人音频。游戏 / Discord 仍需实际配置和测试。
 
-上游现有安装方式要求测试签名及关闭 Secure Boot，没有提供本项目已验证的微软生产签名包。这是该发行包的签名状态，不是开源许可本身的要求。Windows 的内核驱动加载策略见 [Microsoft 官方说明](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/kernel-mode-code-signing-policy--windows-vista-and-later-)。
+USBip 0.9.8.1 x64 官方安装包已下载并核对 SHA-256，Authenticode 状态 Valid，签名者 Cloudyne Systems (Scheibling Consulting AB)。安装器签名有效不等于已验证实际内核加载。核验记录见 usbip-release.json。
 
-用户已选择**保持当前安全设置**。因此，本项目不会开启测试签名、修改 Secure Boot、添加根证书或安装内核驱动；本机的虚拟麦克风发送目前不可用。仅更改设备名称或从软件中“创建一个麦克风”不能替代内核驱动。
+## 构建后端
 
-本地中文播报与日语试听已独立实现，可以直接播放到现有耳机；不需要上述驱动。但这不会在 Windows 的设备列表中新增虚拟扬声器或虚拟麦克风。
+完整 setup.ps1 默认构建用户态后端。也可单独运行：
 
-后续若获得兼容且带生产签名的开源驱动包，可以保持安全设置并接入。此前不能承诺这套驱动适用于要求安全启动或禁止测试模式的游戏，也没有进行游戏反作弊兼容测试。
+```powershell
+powershell -ExecutionPolicy Bypass -File .\drivers\build_virtual_mic.ps1
+```
 
-## 已完成的接入
+需要 Go 1.22+；未找到时，脚本在项目 work/go-toolchain 下载 Go 1.27.3 便携 ZIP 并校验固定哈希，不改系统 PATH。构建不安装驱动。GitHub 和源码 ZIP 不包含 EXE；本次本地应用 ZIP 带后端 EXE，但不含 Python 环境、模型和系统驱动安装器。setup.ps1 -SkipVirtualMic 可跳过此构建。
 
-- 自动识别 RadioVoice Output，优先选择 WASAPI 端点。
-- 输出选择器只列出这一已适配开源驱动的播放端。
-- 服务启动会再次校验端点，避免旧配置恢复闭源音频线或误选实体扬声器。
-- 未发现驱动时明确提示虚拟麦克风不可用。
-- 安装脚本只部署用户态应用和模型，没有驱动安装或启动配置修改命令。
+## 准备和安装运输驱动
 
-驱动就绪后的联调应验证：生成日语能从 RadioVoice Microphone 录到、目标聊天软件在译文播放期间发送、设备默认采样率正确，以及游戏运行时字幕可见。以上内核驱动与游戏链路尚未在本机验证。
+只下载、核验，不安装：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\drivers\setup_virtual_mic.ps1
+```
+
+来源：[USBip 0.9.8.1 x64 官方发行版](https://github.com/vadimgrn/usbip-win2/releases/tag/v.0.9.8.1)。安装器保存在 downloads/USBip-0.9.8.1-x64.exe。
+
+SHA-256：`38cad6d4432b52d5bb9409d9ad03b72fdffc4ada4cd3a48fbeca1a2752a8518a`。
+
+**上游安装器会短暂重启 USB 3.0 Hub，USB 键鼠、声卡、摄像头和移动硬盘可能短暂断开。** 请避开游戏、会议、录音和文件传输；上游建议准备系统还原点。本项目不自动创建还原点或重启电脑。
+
+准备好并同意 USB 设备短暂断开后，以管理员 PowerShell 执行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\drivers\setup_virtual_mic.ps1 -Install -AcceptUsbRestart
+```
+
+脚本再次核对哈希并要求安装器签名 Valid，再启动原版安装器，禁用自动重启。若 Windows 拒绝加载，停止并查看 downloads/usbip-install.log，不要通过关闭安全启动或开启测试模式绕过。若安装要求重启，手动安排后再连接。后续翻译与变声通常无需管理员权限。
+
+## 在应用和聊天软件中使用
+
+1. 在设备页点击连接 Speak Sound 虚拟麦克风，等待并刷新设备。
+2. 本软件发送输出选 `扬声器 / Speakers (Speak Sound Virtual Cable 01)`，勾选发送声音。
+3. 游戏 / Discord 输入选 `麦克风 / Microphone (Speak Sound Virtual Cable 01)`，输出保持耳机。
+4. 直接变声：顶部选实时变声器，选真实麦克风、音效；F8 按住期间连续发送。关闭 F8 开关则持续发送。
+5. 翻译变声：顶部保持双向翻译，在变声器页启用效果；仅自己的日语译音会变声，队友中文播报保持原音色。
+6. 先在耳机中监听测试。实时监听需戴耳机，避免扬声器和麦克风回授。
+
+断开或关闭本软件会关闭本软件的虚拟声卡，运输驱动留在系统。不设置开机自启或永久 USB 连接。管理器仅分离本次确切拥有的 USB/IP 端口，不执行 detach-all，不关闭其他程序。32401 端口被其他程序占用时提示失败。
+
+## 格式和边界
+
+48 kHz / 双声道 / 16 位 PCM。ring 容量 80 ms 不是总延迟保证；变调读指针另有约 5～85 ms 延迟，还需计入采集、输出、USB、聊天软件等缓冲。音频只走内存和 127.0.0.1，不发外部服务器。
+
+后端仍是实验性 USB 模拟代码，不能保证每种游戏、反作弊、Windows 版本和长期负载兼容。采用上游实验 USB VID/PID，不宣称注册了硬件 ID。卸载运输驱动应通过 Windows 已安装的应用卸载 USBip，本软件不强删可能被其他应用共享的运输驱动。
+
+旧 `RadioVoice Output → RadioVoice Microphone` GPL 接入为旧配置保留，其现有上游包要求测试签名，本项目不安装或改变安全设置。新的推荐路线是上述签名运输层和开源用户态声卡。
+连接前保存系统默认设备；若 Windows 自动将新声卡设为默认，软件按播放/录音、控制台/多媒体/通信六个角色恢复原默认，仅在当前默认仍是本声卡时恢复，不覆盖用户并发切换到其他设备的选择。该行为已在本机验证。为防回授，不允许选择自身虚拟麦克风或 Primary Sound Capture / 主声音捕获等动态别名，旧配置需重选明确名称的实体麦克风。
+额外验证：安装包内两个 SYS 与两个 CAT 均为 Valid 的 Microsoft Windows Hardware Compatibility Publisher 签名，已记录各文件哈希；仍未实际加载驱动。脚本只安装 main/client，不选择 GUI、SDK、调试符号或随包 VC Redistributable，使用本机已有 Windows C++ 运行环境。

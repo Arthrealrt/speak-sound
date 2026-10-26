@@ -1,0 +1,51 @@
+{
+  "date": "2026-10-26",
+  "sample_rate": 48000,
+  "synthetic_input": "440 Hz tone, not a real speaker",
+  "iterations": 300,
+  "rows": [
+    {
+      "preset": "natural",
+      "block_ms": 20,
+      "mean_processing_ms": 0.0112,
+      "p95_processing_ms": 0.0128
+    },
+    {
+      "preset": "deep",
+      "block_ms": 20,
+      "mean_processing_ms": 0.0769,
+      "p95_processing_ms": 0.1006
+    },
+    {
+      "preset": "bright",
+      "block_ms": 20,
+      "mean_processing_ms": 0.08,
+      "p95_processing_ms": 0.1089
+    },
+    {
+      "preset": "cartoon",
+      "block_ms": 20,
+      "mean_processing_ms": 0.0833,
+      "p95_processing_ms": 0.1046
+    },
+    {
+      "preset": "robot",
+      "block_ms": 20,
+      "mean_processing_ms": 0.023,
+      "p95_processing_ms": 0.0274
+    },
+    {
+      "preset": "radio",
+      "block_ms": 20,
+      "mean_processing_ms": 0.0432,
+      "p95_processing_ms": 0.056
+    }
+  ],
+  "excludes": [
+    "capture",
+    "output callback",
+    "USB transport",
+    "device buffering",
+    "game"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "sample_rate": 48000,
+  "captured_frames": 131200,
+  "rms": 0.09459,
+  "source_hz": 440,
+  "pitch_semitones": -5,
+  "expected_hz": 329.63,
+  "captured_peak_hz": 327.07,
+  "physical_microphone_opened": false,
+  "raw_capture_saved": false,
+  "date": "2026-10-26",
+  "kernel_load_tested": true,
+  "secure_boot_remained_enabled": true
+}

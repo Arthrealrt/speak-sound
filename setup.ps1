@@ -2,7 +2,8 @@ param(
     [string]$PythonExe = "",
     [ValidateSet("tiny", "base", "small", "medium", "large-v3-turbo")]
     [string]$WhisperModel = "small",
-    [switch]$SkipModels
+    [switch]$SkipModels,
+    [switch]$SkipVirtualMic
 )
 $ErrorActionPreference = "Stop"
 Set-Location -LiteralPath $PSScriptRoot
@@ -28,4 +29,7 @@ if (-not $SkipModels) {
     & $AppPython tools\download_models.py --whisper $WhisperModel
     if ($LASTEXITCODE -ne 0) { throw "Model download failed; rerun setup.ps1 to resume" }
 }
-Write-Host "Setup finished. Run start.cmd. See drivers/README.md for open-source microphone routing."
+if (-not $SkipVirtualMic) {
+    & (Join-Path $PSScriptRoot 'drivers/build_virtual_mic.ps1')
+}
+Write-Host "Setup finished. Run start.cmd. Virtual microphone transport installation is separate; see drivers/README.md."

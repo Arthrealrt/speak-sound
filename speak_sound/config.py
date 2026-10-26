@@ -29,6 +29,12 @@ class Settings:
     vad_aggressiveness: int = 2
     silence_ms: int = 400
     max_speech_seconds: float = 5.0
+    operating_mode: str = "translation"
+    voice_enabled: bool = False
+    voice_pitch: float = 0.0
+    voice_effect: str = "clean"
+    send_volume: int = 100
+    send_muted: bool = False
 
     def __post_init__(self):
         self.silence_ms = max(100, min(1500, int(self.silence_ms)))
@@ -36,6 +42,12 @@ class Settings:
         self.incoming_volume = max(0, min(100, int(self.incoming_volume)))
         self.outgoing_volume = max(0, min(100, int(self.outgoing_volume)))
         self.asr_threads = max(1, min(16, int(self.asr_threads)))
+        self.voice_pitch = max(-12.0, min(12.0, float(self.voice_pitch)))
+        self.send_volume = max(0, min(100, int(self.send_volume)))
+        if self.voice_effect not in ("clean", "robot", "radio"):
+            self.voice_effect = "clean"
+        if self.operating_mode not in ("translation", "voice_changer"):
+            self.operating_mode = "translation"
         if self.speed_mode not in ("fast", "balanced"):
             self.speed_mode = "balanced"
         if self.receive_mode not in ("device", "process"):
