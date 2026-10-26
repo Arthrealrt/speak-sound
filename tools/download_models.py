@@ -13,6 +13,8 @@ from huggingface_hub import snapshot_download, hf_hub_url, get_hf_file_metadata
 import requests
 
 ROOT = Path(__file__).resolve().parent.parent
+ENGLISH_TTS_REPO = "csukuangfj/vits-melo-tts-en"
+ENGLISH_TTS_REVISION = "9969cf40233d9ee504a6e1cde8aee9bab3ecf985"
 
 
 def download_weights(repo, folder, revision="main", expected_hash=None, filename="model.bin"):
@@ -65,11 +67,23 @@ def download_weights(repo, folder, revision="main", expected_hash=None, filename
             time.sleep(2)
 
 
+def download_english_tts():
+    print("Downloading MIT-licensed English speech model…", flush=True)
+    folder = ROOT / "models" / "english-tts"
+    snapshot_download(ENGLISH_TTS_REPO, revision=ENGLISH_TTS_REVISION, local_dir=folder,
+                      allow_patterns=["tokens.txt", "lexicon.txt", "LICENSE", "README.md"])
+    download_weights(ENGLISH_TTS_REPO, folder, revision=ENGLISH_TTS_REVISION, filename="model.onnx")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--whisper", choices=["tiny", "base", "small", "medium", "large-v3-turbo"], default="small")
     parser.add_argument("--skip-tts", action="store_true", help="Download only ASR and translation files")
+    parser.add_argument("--english-only", action="store_true", help="Add English TTS to an existing installation")
     args = parser.parse_args()
+    if args.english_only:
+        download_english_tts()
+        return
     print("Downloading local ASR model…", flush=True)
     whisper_repo = (f"Systran/faster-whisper-{args.whisper}" if args.whisper != "large-v3-turbo"
                     else "mobiuslabsgmbh/faster-whisper-large-v3-turbo")
@@ -101,6 +115,7 @@ def main():
         print("Preparing local Japanese TTS…", flush=True)
         import pyopenjtalk
         pyopenjtalk.tts("準備ができました。")
+        download_english_tts()
     print("Ready. Run start.cmd. Models remain on this computer only.", flush=True)
 
 

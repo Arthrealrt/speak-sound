@@ -47,6 +47,8 @@ class LocalPlayback(threading.Thread):
                 continue
             if self.stop.is_set():
                 break
+            if self.volume is not None and self.volume(direction) <= 0:
+                continue  # Muted playback must not block capture behind a feedback gate.
             self.gate.begin()
             try:
                 if self.volume is None:

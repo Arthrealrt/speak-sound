@@ -1,0 +1,10 @@
+{
+  "repo": "csukuangfj/vits-melo-tts-en",
+  "revision": "9969cf40233d9ee504a6e1cde8aee9bab3ecf985",
+  "sha256": {
+    "model.onnx": "5f72fbbc4105b008de8141049c0535b7a99a527ddb80fcbc0c0ac8a046997544",
+    "tokens.txt": "96026b19956133d23b7048c0e75466d061f31dea4e848315689259876b531376",
+    "lexicon.txt": "d9180223df27dc6addafbcc2a4236388ebd170d22df89ac7008a24448d37906b",
+    "LICENSE": "88a50e5a02bbc2a5c2f084dc19da751aa97b1690f5fda76cd8005c8634d1ca70"
+  }
+}

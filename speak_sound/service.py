@@ -1,6 +1,7 @@
 import queue
 import threading
 import time
+from dataclasses import replace
 
 from PySide6.QtCore import QObject, Signal
 import pyaudiowpatch as pa
@@ -12,6 +13,7 @@ from .playback import FeedbackGate, LocalPlayback
 from .process_audio import ProcessCapture
 from .realtime import RealtimeVoice
 from .voice import process_utterance
+from .queues import LatestQueue
 
 
 class Events(QObject):
@@ -73,11 +75,14 @@ class Service:
                     return (self.settings.incoming_volume if direction == "in" else self.settings.outgoing_volume) / 100
                 if self.settings.speak_incoming or (not self.settings.receive_only and self.settings.monitor_outgoing):
                     local = LocalPlayback(p, listen, self.stop, self.feedback, play, self.events.status.emit, volume)
-            incoming, outgoing = queue.Queue(maxsize=2), queue.Queue(maxsize=2)
+            incoming, outgoing = LatestQueue(maxsize=1), queue.Queue(maxsize=2)
+            incoming_speech = LatestQueue(maxsize=1)
+            receiving_settings = replace(self.settings, silence_ms=self.settings.incoming_silence_ms,
+                                         max_speech_seconds=self.settings.incoming_max_seconds)
             if self.settings.receive_mode == "process":
-                captures = [ProcessCapture(self.process_target, incoming, self.stop, self.settings, self.events.status.emit)]
+                captures = [ProcessCapture(self.process_target, incoming, self.stop, receiving_settings, self.events.status.emit)]
             else:
-                captures = [Capture(p, receive, incoming, self.stop, lambda: not self.feedback.paused(), self.settings, self.events.status.emit)]
+                captures = [Capture(p, receive, incoming, self.stop, lambda: not self.feedback.paused(), receiving_settings, self.events.status.emit)]
             if not self.settings.receive_only:
                 if live:
                     captures.append(RealtimeVoice(p, mic, output,
@@ -98,27 +103,25 @@ class Service:
                         continue
                     try:
                         started = time.monotonic()
-                        original = models.recognize(pcm, "ja" if direction == "in" else "zh")
+                        original = models.recognize(pcm, self.settings.incoming_language if direction == "in" else "zh")
                         if not original or self.stop.is_set():
                             continue
                         translated = models.translate(original,
-                            "ja" if direction == "in" else "zh",
-                            "zh" if direction == "in" else "ja")
+                            self.settings.incoming_language if direction == "in" else "zh",
+                            "zh" if direction == "in" else self.settings.target_language)
                         if self.stop.is_set() or not translated:
                             continue
                         self.events.transcript.emit(direction, original, translated, time.monotonic() - started)
                         if direction == "in":
                             self.events.subtitle.emit(original, translated)
                             if self.settings.speak_incoming:
-                                samples, rate = models.synthesize(translated, "zh")
-                                if not self.stop.is_set():
-                                    local.submit(samples, rate)
+                                incoming_speech.put_nowait(translated)
                         else:
                             if live and not self.settings.monitor_outgoing:
                                 continue  # Translation text still appears; the virtual mic carries live original speech.
                             self.sending.set()
                             try:
-                                samples, rate = models.synthesize(translated)
+                                samples, rate = models.synthesize(translated, self.settings.target_language)
                                 samples = process_utterance(samples, rate, self.settings)
                                 if not self.stop.is_set():
                                     if self.settings.monitor_outgoing:
@@ -131,7 +134,24 @@ class Service:
                     except Exception as exc:
                         self.events.status.emit(f"处理失败：{exc}")
 
+            def speak_received():
+                while not self.stop.is_set():
+                    try:
+                        text = incoming_speech.get(timeout=.1)
+                    except queue.Empty:
+                        continue
+                    if self.settings.playback_muted or self.settings.incoming_volume <= 0:
+                        continue
+                    try:
+                        samples, rate = models.synthesize(text, "zh")
+                        if not self.stop.is_set():
+                            local.submit(samples, rate)
+                    except Exception as exc:
+                        self.events.status.emit(f"中文播报失败：{exc}")
+
             children = captures + [threading.Thread(target=worker, args=(incoming, "in"), daemon=True)]
+            if self.settings.speak_incoming:
+                children.append(threading.Thread(target=speak_received, name="incoming-tts", daemon=True))
             if not self.settings.receive_only:
                 children.append(threading.Thread(target=worker, args=(outgoing, "out"), daemon=True))
             if local is not None:
@@ -139,11 +159,13 @@ class Service:
             for child in children:
                 child.start()
             self.events.active.emit(True)
+            incoming_name = "英语" if self.settings.incoming_language == "en" else "日语"
+            target_name = "英语" if self.settings.target_language == "en" else "日语"
             if self.settings.receive_only:
-                self.events.status.emit("队友翻译运行中 · 日语 → 中文字幕" + ("及中文播报" if self.settings.speak_incoming else ""))
+                self.events.status.emit("队友翻译运行中 · " + incoming_name + " → 中文字幕" + ("及中文播报" if self.settings.speak_incoming else ""))
             else:
-                route = ("实时原声变声发送，日语译文继续显示/试听" if live
-                         else "中文 → 日语译音" + (" → 变声" if self.settings.voice_enabled else ""))
+                route = ("实时原声变声发送，译文继续显示/试听" if live
+                         else "中文 → " + target_name + "译音" + (" → 变声" if self.settings.voice_enabled else ""))
                 self.events.status.emit("双向翻译运行中 · " + route +
                     (" · 虚拟麦克风发送已开启" if self.settings.send_to_virtual else " · 本地试听"))
             self.stop.wait()

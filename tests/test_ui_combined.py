@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from speak_sound.config import Settings
-from speak_sound.ui import Window, create_application
+from speak_sound.ui import Window, Subtitle, create_application
 
 
 class CombinedUiTests(unittest.TestCase):
@@ -34,3 +34,32 @@ class CombinedUiTests(unittest.TestCase):
         finally:
             window.volume_save.stop()
             window.close()
+
+    def test_english_labels_and_independent_language_choices(self):
+        with patch.object(Window, 'refresh_devices'), patch.object(Window, 'refresh_processes'), \
+             patch.object(Settings, 'load', return_value=Settings()):
+            window = Window()
+        try:
+            window.target_language.setCurrentIndex(window.target_language.findData('en'))
+            window.incoming_language.setCurrentIndex(window.incoming_language.findData('ja'))
+            self.assertIn('英语', window.operating_mode.itemText(0))
+            self.assertIn('英语', window.outgoing_monitor.text())
+            self.assertIn('日语', window.incoming_voice.text())
+        finally:
+            window.volume_save.stop()
+            window.close()
+
+    def test_overlay_is_transparent_and_bounded_and_stays_hidden_after_stop(self):
+        overlay = Subtitle(Settings())
+        try:
+            overlay.display('original text', '敌人在右边。' * 1000)
+            self.app.processEvents()
+            self.assertLessEqual(len(overlay.label.text().splitlines()), 2)
+            self.assertLessEqual(len(overlay.pages), 3)
+            self.assertIn('transparent', overlay.label.styleSheet())
+            self.assertLess(overlay.height(), 150)
+            overlay.hide()
+            self.assertFalse(overlay.timer.isActive())
+            self.assertEqual(overlay.pages, [])
+        finally:
+            overlay.close()

@@ -1,0 +1,87 @@
+{
+  "date": "2026-10-26",
+  "model": "Whisper small CPU int8; M2M100 int8; dedicated MeloTTS English; standard Silero VAD",
+  "scope": "One synthetic sentence per language per mode, no real microphone, no game sound, no full end-to-end timing.",
+  "balanced": [
+    {
+      "language": "en",
+      "input": "Enemy on the right. Stay with me.",
+      "recognized": "enemy on the right, stay with me.",
+      "translated": "敌人在右边,留在我身边。",
+      "processing_seconds": 1.457,
+      "output_seconds": 2.21
+    },
+    {
+      "language": "ja",
+      "input": "敵が右にいます。一緒に行こう。",
+      "recognized": "敵が右にいます一緒に行こう",
+      "translated": "敌人在右边,我们一起去吧。",
+      "processing_seconds": 1.242,
+      "output_seconds": 2.22
+    },
+    {
+      "language": "zh",
+      "input": "队友在右边，一起走吧。",
+      "recognized": "队友在右边,一起走吧。",
+      "translated": "The team is on the right side, go together.",
+      "processing_seconds": 1.118,
+      "output_seconds": 2.81
+    },
+    {
+      "input": "silence",
+      "recognized": "",
+      "processing_seconds": 0.005
+    },
+    {
+      "input": "tone",
+      "recognized": "",
+      "processing_seconds": 0.005
+    },
+    {
+      "input": "noise",
+      "recognized": "",
+      "processing_seconds": 0.005
+    }
+  ],
+  "fast": [
+    {
+      "language": "en",
+      "input": "Enemy on the right. Stay with me.",
+      "recognized": "Enemy on the right, stay with me.",
+      "translated": "右边的敌人,留在我身边。",
+      "processing_seconds": 0.983,
+      "output_seconds": 2.24
+    },
+    {
+      "language": "ja",
+      "input": "敵が右にいます。一緒に行こう。",
+      "recognized": "敵が右にいます一緒に行こう",
+      "translated": "敌人在右边,我们一起去吧。",
+      "processing_seconds": 0.952,
+      "output_seconds": 2.22
+    },
+    {
+      "language": "zh",
+      "input": "队友在右边，一起走吧。",
+      "recognized": "队友在右边,一起走吧。",
+      "translated": "The team is on the right side, go together.",
+      "processing_seconds": 0.951,
+      "output_seconds": 2.64
+    },
+    {
+      "input": "silence",
+      "recognized": "",
+      "processing_seconds": 0.004
+    },
+    {
+      "input": "tone",
+      "recognized": "",
+      "processing_seconds": 0.004
+    },
+    {
+      "input": "noise",
+      "recognized": "",
+      "processing_seconds": 0.004
+    }
+  ]
+}

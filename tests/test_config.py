@@ -6,6 +6,13 @@ from speak_sound.config import Settings
 
 
 class ConfigTests(unittest.TestCase):
+    def test_language_filter_and_receive_timing_are_validated(self):
+        settings = Settings(target_language='xx', incoming_language='en', speech_filter='bad',
+                            incoming_silence_ms=-1, incoming_max_seconds=99)
+        self.assertEqual(settings.target_language, 'ja')
+        self.assertEqual(settings.incoming_language, 'en')
+        self.assertEqual(settings.speech_filter, 'standard')
+        self.assertEqual((settings.incoming_silence_ms, settings.incoming_max_seconds), (100, 6))
     def test_old_voice_changer_migrates_to_combined_route(self):
         self.assertEqual(Settings(operating_mode='voice_changer').operating_mode, 'live_translation')
         self.assertEqual(Settings().operating_mode, 'translation')

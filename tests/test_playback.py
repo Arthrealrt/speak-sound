@@ -5,6 +5,25 @@ from speak_sound.playback import FeedbackGate, LocalPlayback
 
 
 class PlaybackTests(unittest.TestCase):
+    def test_muted_queue_does_not_open_output_or_pause_capture(self):
+        stop, observed = threading.Event(), threading.Event()
+        gate = FeedbackGate()
+        played = []
+        def volume(direction):
+            observed.set()
+            return 0
+        player = LocalPlayback(None, None, stop, gate, lambda *args, **kwargs: played.append(True),
+                               lambda message: None, volume)
+        player.submit([0], 16000)
+        player.start()
+        try:
+            self.assertTrue(observed.wait(1))
+        finally:
+            stop.set()
+            player.join(2)
+        self.assertEqual(played, [])
+        self.assertFalse(gate.paused())
+
     def test_direction_selects_independent_live_gain(self):
         stop = threading.Event()
         volumes = {"in": .8, "out": .4}

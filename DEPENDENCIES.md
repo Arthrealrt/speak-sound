@@ -20,10 +20,12 @@
 | PyAudioWPatch / PortAudio | 包元数据标注 Apache-2.0；其继承的 PyAudio / PortAudio 含 MIT 许可部分，见[上游](https://github.com/s0d3s/PyAudioWPatch)及安装包 notices |
 | NumPy / SciPy | BSD 为主，含各自开源组件 notices；[NumPy](https://github.com/numpy/numpy)、[SciPy](https://github.com/scipy/scipy) |
 | WebRTC VAD | MIT / WebRTC BSD notices；[webrtcvad-wheels](https://github.com/daanzu/py-webrtcvad-wheels) |
+| Silero VAD | MIT；[上游源码](https://github.com/snakers4/silero-vad)，使用 faster-whisper 固定安装包随附 ONNX 模型，[许可副本](licenses/Silero-VAD-LICENSE.txt)；仅检测人声，不区分说话人身份 |
 | pyopenjtalk-plus / OpenJTalk / HTS Engine | MIT / BSD 系列许可；[pyopenjtalk-plus](https://github.com/tsukumijima/pyopenjtalk-plus)及其第三方源码 notices |
 | SudachiPy / SudachiDict-core | Apache-2.0；[SudachiPy](https://github.com/WorksApplications/SudachiPy)、[SudachiDict](https://github.com/WorksApplications/SudachiDict) |
 | Mei 日语声库 | CC BY 3.0；MMDAgent Project Team，Copyright 2009–2013 Nagoya Institute of Technology, Department of Computer Science。[随包原始声明](licenses/Mei-voice-LICENSE.txt) |
 | MeloTTS 中文声库及 ONNX 转换 | MIT；[固定模型版本](https://huggingface.co/csukuangfj/vits-melo-tts-zh_en/tree/a0d5c6a264c0ef92d70d8661d8cc502d79627cd6)，Copyright 2024 MyShell.ai，转换代码来自 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx/tree/master/scripts/melo-tts) |
+| MeloTTS 英语声库及 ONNX 转换 | MIT；[固定模型版本](https://huggingface.co/csukuangfj/vits-melo-tts-en/tree/9969cf40233d9ee504a6e1cde8aee9bab3ecf985)，Copyright 2024 MyShell.ai，[许可副本](licenses/MeloTTS-English-LICENSE.txt)；与中文模型分开加载 |
 | sherpa-onnx / sherpa-onnx-core | Apache-2.0；[上游](https://github.com/k2-fsa/sherpa-onnx) |
 | Transformers / Hugging Face Hub / tokenizers / SentencePiece | Apache-2.0；各包及上游仓库中的许可文件 |
 | ONNX Runtime | MIT；[上游](https://github.com/microsoft/onnxruntime) |

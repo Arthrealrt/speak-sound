@@ -29,6 +29,12 @@ class Settings:
     vad_aggressiveness: int = 2
     silence_ms: int = 400
     max_speech_seconds: float = 5.0
+    target_language: str = "ja"
+    incoming_language: str = "ja"
+    speech_filter: str = "standard"
+    incoming_silence_ms: int = 240
+    incoming_max_seconds: float = 2.5
+    subtitle_original: bool = False
     operating_mode: str = "translation"
     voice_enabled: bool = True
     monitor_live_voice: bool = False
@@ -38,6 +44,15 @@ class Settings:
     send_muted: bool = False
 
     def __post_init__(self):
+        for field in ("target_language", "incoming_language"):
+            if getattr(self, field) not in ("ja", "en"):
+                setattr(self, field, "ja")
+        if self.speech_filter not in ("off", "standard", "strict"):
+            self.speech_filter = "standard"
+        self.incoming_silence_ms = max(100, min(1500, int(self.incoming_silence_ms)))
+        self.incoming_max_seconds = max(1., min(6., float(self.incoming_max_seconds)))
+        self.font_size = max(16, min(60, int(self.font_size)))
+        self.subtitle_seconds = max(2, min(10, int(self.subtitle_seconds)))
         self.silence_ms = max(100, min(1500, int(self.silence_ms)))
         self.max_speech_seconds = max(1.0, min(10.0, float(self.max_speech_seconds)))
         self.incoming_volume = max(0, min(100, int(self.incoming_volume)))

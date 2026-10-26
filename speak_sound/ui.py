@@ -8,10 +8,11 @@ from pathlib import Path
 
 import pyaudiowpatch as pa
 from PySide6.QtCore import Qt, QTimer, QLocale, Signal
-from PySide6.QtGui import QCloseEvent, QFont, QFontDatabase
+from PySide6.QtGui import QCloseEvent, QFont, QFontDatabase, QColor
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFormLayout,
     QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton, QSpinBox,
-    QTabWidget, QTextEdit, QVBoxLayout, QWidget, QSlider, QDoubleSpinBox, QScrollArea)
+    QTabWidget, QTextEdit, QVBoxLayout, QWidget, QSlider, QDoubleSpinBox, QScrollArea,
+    QGraphicsDropShadowEffect)
 
 from .audio import devices
 from .config import Settings
@@ -21,6 +22,7 @@ from .process_audio import running_processes
 from .virtual_mic import VirtualMicrophone
 from .voice import PRESETS
 from . import __version__
+from .subtitles import subtitle_pages
 
 
 class Subtitle(QWidget):
@@ -33,33 +35,59 @@ class Subtitle(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(10, 8, 10, 8)
         self.label = QLabel()
         self.label.setTextFormat(Qt.TextFormat.PlainText)
-        self.label.setWordWrap(True)
+        self.label.setWordWrap(False)
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.label)
+        shadow = QGraphicsDropShadowEffect(self.label)
+        shadow.setBlurRadius(7)
+        shadow.setOffset(0, 1)
+        shadow.setColor(QColor(0, 0, 0, 240))
+        self.label.setGraphicsEffect(shadow)
+        self.pages = []
         self.timer = QTimer(self)
         self.timer.setSingleShot(True)
-        self.timer.timeout.connect(self.hide)
+        self.timer.timeout.connect(self.next_page)
 
     def display(self, original, translated):
-        self.label.setStyleSheet("QLabel { color: white; background: rgba(10, 14, 24, 210);"
-                                  "border-radius: 12px; padding: 14px 24px;"
+        self.setStyleSheet("background: transparent;")
+        self.label.setStyleSheet("QLabel { color: white; background: transparent; padding: 0;"
                                   f"font-size: {self.settings.font_size}px; }}")
-        self.label.setFont(QFont("Microsoft YaHei UI", self.settings.font_size))
-        self.label.setText(translated + ("\n" + original if original else ""))
+        font = QFont("Microsoft YaHei UI")
+        font.setPixelSize(self.settings.font_size)
+        self.label.setFont(font)
+        self.label.ensurePolished()
         screens = QApplication.screens()
-        screen = screens[min(self.settings.screen, len(screens) - 1)]
+        screen = screens[max(0, min(self.settings.screen, len(screens) - 1))]
         rect = screen.geometry()
-        width = int(rect.width() * .82)
+        width = min(1200, int(rect.width() * .72))
         self.setFixedWidth(width)
-        height = min(int(rect.height() * .35), max(90, self.label.heightForWidth(width) + 8))
+        metrics = self.label.fontMetrics()
+        height = metrics.lineSpacing() * 2 + 20
         self.setFixedHeight(height)
+        self.pages = subtitle_pages(translated, metrics.horizontalAdvance, width - 24,
+                                    lines=1 if self.settings.subtitle_original else 2)
+        self.original = metrics.elidedText(" ".join(original.split()), Qt.TextElideMode.ElideRight, width - 24)
         self.move(rect.x() + (rect.width() - width) // 2,
                   rect.bottom() - self.settings.bottom_margin - height)
+        self.next_page()
+
+    def next_page(self):
+        if not self.pages:
+            self.hide()
+            return
+        page = self.pages.pop(0)
+        self.label.setText(page + ("\n" + self.original if self.settings.subtitle_original and self.original else ""))
         self.show()
-        self.timer.start(self.settings.subtitle_seconds * 1000)
+        # New incoming subtitles replace pending pages, keeping the overlay current.
+        self.timer.start(min(self.settings.subtitle_seconds * 1000, max(1800, len(page) * 65)))
+
+    def hideEvent(self, event):
+        self.pages.clear()
+        self.timer.stop()
+        super().hideEvent(event)
 
 
 class Window(QMainWindow):
@@ -86,7 +114,7 @@ class Window(QMainWindow):
         title = QLabel("Speak Sound")
         title.setStyleSheet("font-size: 32px; font-weight: 700; color: #aab9ff;")
         layout.addWidget(title)
-        layout.addWidget(QLabel("中文 → 日语虚拟麦克风    /    日语 → 屏幕底部中文字幕"))
+        layout.addWidget(QLabel("中文 → 日语 / 英语虚拟麦克风    ·    队友外语 → 底部中文字幕"))
         self.operating_mode = QComboBox()
         layout.addWidget(QLabel("声音发送方式 · 两种方式均保持双向翻译"))
         self.operating_mode.addItem("日语译音变声 → 虚拟麦克风（推荐）", "translation")
@@ -97,6 +125,14 @@ class Window(QMainWindow):
         layout.addWidget(self.tabs)
         controls = QWidget()
         form = QFormLayout(controls)
+        self.target_language, self.incoming_language = QComboBox(), QComboBox()
+        for combo, saved in ((self.target_language, self.settings.target_language),
+                             (self.incoming_language, self.settings.incoming_language)):
+            combo.addItem("日语", "ja")
+            combo.addItem("英语", "en")
+            combo.setCurrentIndex(combo.findData(saved))
+        form.addRow("我的中文翻译成", self.target_language)
+        form.addRow("队友说的语言", self.incoming_language)
         self.mic, self.receive, self.output = QComboBox(), QComboBox(), QComboBox()
         form.addRow("你的实体麦克风", self.mic)
         self.receive_mode = QComboBox()
@@ -105,6 +141,18 @@ class Window(QMainWindow):
         self.receive_mode.setCurrentIndex(self.receive_mode.findData(self.settings.receive_mode))
         self.receive_mode.currentIndexChanged.connect(self.update_mode)
         form.addRow("接收来源", self.receive_mode)
+        self.speech_filter = QComboBox()
+        for name, key in (("标准 · 神经网络语音检测 + 置信度过滤", "standard"),
+                          ("严格 · 更少音效误触发，可能漏掉短句", "strict"),
+                          ("关闭神经网络检测（仍过滤异常识别文本）", "off")):
+            self.speech_filter.addItem(name, key)
+        self.speech_filter.setCurrentIndex(self.speech_filter.findData(self.settings.speech_filter))
+        form.addRow("接收人声筛选", self.speech_filter)
+        separation_hint = QLabel("游戏内语音与音效混合时，筛选可减少非人声触发，但不能辨认谁在说话，"
+                                "也会接收角色对白。若游戏提供独立聊天输出，将它送到独立设备后选对应回环；"
+                                "使用 Discord 时选其进程，可排除其他游戏声音。")
+        separation_hint.setWordWrap(True)
+        form.addRow(separation_hint)
         process_row = QWidget()
         process_layout = QHBoxLayout(process_row)
         process_layout.setContentsMargins(0, 0, 0, 0)
@@ -152,6 +200,10 @@ class Window(QMainWindow):
         self.font_size.setRange(16, 60)
         self.font_size.setValue(self.settings.font_size)
         form.addRow("字幕字号", self.font_size)
+        self.subtitle_original = QCheckBox("字幕附带外语原文（总计最多两行）")
+        self.subtitle_original.setChecked(self.settings.subtitle_original)
+        form.addRow(self.subtitle_original)
+        form.addRow(QLabel("字幕背景透明，默认只显示中文；长句分页，完整内容保留在记录页。"))
         self.margin = QSpinBox()
         self.margin.setRange(0, 500)
         self.margin.setValue(self.settings.bottom_margin)
@@ -175,7 +227,7 @@ class Window(QMainWindow):
         self.outgoing_monitor.setChecked(self.settings.monitor_outgoing)
         self.outgoing_monitor.toggled.connect(self.update_mode)
         playback_form.addRow(self.outgoing_monitor)
-        hint = QLabel("本地播放直接使用现有耳机，无需新驱动。若未勾选发送，日语只供自己试听。\n\n"
+        hint = QLabel("本地播放直接使用现有耳机，无需新驱动。若未勾选发送，外语只供自己试听。\n\n"
                       "指定进程模式只收目标及其子进程的声音，播放译音时仍可收队友。"
                       "整个设备模式会在译音播放时暂停接收，以防循环翻译。"
                       "实体麦克风在译音播放时均暂停，建议佩戴耳机。\n\n"
@@ -216,10 +268,10 @@ class Window(QMainWindow):
         self.voice_enable.toggled.connect(self.update_voice)
         self.voice_pitch.valueChanged.connect(self.update_voice)
         self.voice_effect.currentIndexChanged.connect(self.update_voice)
-        voice_hint = QLabel("变声与双向翻译同时运行。推荐发送日语译音：中文先翻译成日语，再变声发送；"
-                            "队友日语持续翻译为中文字幕和中文播报，中文播报不加变声。\n\n"
+        voice_hint = QLabel("变声与双向翻译同时运行。推荐发送外语译音：中文先翻译成所选日语或英语，再变声发送；"
+                            "队友外语持续翻译为中文字幕和中文播报，中文播报不加变声。\n\n"
                             "也可选择原声实时发送：按住 F8 立即发送变声后的原语言，松开提交翻译；"
-                            "日语译文仍显示在记录页，并可本地试听，但不会再向游戏发送日语译音。"
+                            "外语译文仍显示在记录页，并可本地试听，但不会再向游戏发送外语译音。"
                             "两种发送方式均使用本地模型。\n\n"
                             "音高、音效与启用开关可运行时调整。此功能为本地 DSP 音效，"
                             "没有 AI 音色克隆或共振峰保持，不能保证模仿特定人物。\n\n"
@@ -254,6 +306,18 @@ class Window(QMainWindow):
         self.segment.setSuffix(" 秒")
         self.segment.setValue(self.settings.max_speech_seconds)
         timing_form.addRow("连续讲话最长分段", self.segment)
+        self.incoming_silence = QSpinBox()
+        self.incoming_silence.setRange(100, 1500)
+        self.incoming_silence.setSingleStep(20)
+        self.incoming_silence.setSuffix(" ms")
+        self.incoming_silence.setValue(self.settings.incoming_silence_ms)
+        timing_form.addRow("队友停顿提交等待", self.incoming_silence)
+        self.incoming_segment = QDoubleSpinBox()
+        self.incoming_segment.setRange(1, 6)
+        self.incoming_segment.setSingleStep(.5)
+        self.incoming_segment.setSuffix(" 秒")
+        self.incoming_segment.setValue(self.settings.incoming_max_seconds)
+        timing_form.addRow("队友最长分段（控制字幕出字频率）", self.incoming_segment)
         quick = QPushButton("应用低延迟预设（200 ms / 3 秒 / 快速）")
         quick.clicked.connect(lambda: self.set_timing("fast", 200, 3))
         timing_form.addRow(quick)
@@ -263,7 +327,8 @@ class Window(QMainWindow):
         timing_hint = QLabel("停止后可调整，下次开始生效。F8 松开即提交，不额外等待停顿。\n\n"
                             "等待越短，出字幕越快，但自然停顿更容易把一句话切断；分段越短，"
                             "长句越早开始处理，但上下文减少、计算次数增加。\n\n"
-                            "快速模式减少搜索和重试。增加 CPU 线程数可能加速，也会占用游戏资源，"
+                            "接收默认 240 ms / 2.5 秒独立分段，只保留最新一条待处理语音，避免旧字幕积压。\n\n"
+                            "两种计算模式都取消温度回退重试；快速模式进一步减少搜索。增加 CPU 线程数可能加速，也会占用游戏资源，"
                             "并非越多越快。低延迟预设最多使用 8 线程，均衡使用 4 线程。\n\n"
                             "总延迟还包括识别、翻译、语音合成和排队；这些数值不是总耗时上限。"
                             "记录页的处理时间仅包含识别与翻译。")
@@ -320,7 +385,7 @@ class Window(QMainWindow):
             "首次使用\n\n"
             "1. 运行 setup.ps1，安装依赖并下载本地模型。之后翻译可以断网运行。\n\n"
             "本地双向试听：选择实体麦克风和接收回环，在「译音播放」页选择耳机，"
-            "启用中文播报与日语试听；保持虚拟麦克风发送关闭即可无需驱动使用。\n\n"
+            "启用中文播报与外语试听；保持虚拟麦克风发送关闭即可无需驱动使用。\n\n"
             "只收队友：勾选「仅接收队友语音」；若只看字幕，再关闭「译音播放」页的中文播报。\n\n"
             "2. 按 drivers/README.md 安装签名开源 USB/IP 运输驱动，再在设备页点击连接虚拟麦克风。"
             "这会创建 Speak Sound Virtual Cable 的播放端和麦克风端；保持系统安全设置不变。\n\n"
@@ -329,7 +394,8 @@ class Window(QMainWindow):
             "4. 游戏 / Discord / 其他语音软件：输入设备选 Speak Sound Virtual Cable 的麦克风端；输出设备选耳机。"
             "目标软件使用语音激活或持续输入；它的按键说话必须覆盖翻译播放时段，"
             "本软件 F8 松开后才开始翻译。\n\n"
-            "5. 开始翻译，按住 F8 说中文，松开。日语队友讲话会在屏幕底部显示中文。\n\n"
+            "5. 在设备页分别选择发送语言（日语 / 英语）和队友语言，再开始翻译。"
+            "按住 F8 说中文、松开；队友讲话会在底部显示中文，透明背景、最多两行。\n\n"
             "耳机回环包含该耳机播放的全部声音。为了减少游戏音效干扰，"
             "可改选「指定运行进程」，刷新并选择 Discord 或游戏 PID。采集包含子进程，"
             "不能在同一个游戏进程中分离队友语音与游戏音效。进程退出后停止，重启需重新选择。\n\n"
@@ -337,8 +403,8 @@ class Window(QMainWindow):
             "内置 OpenJTalk 的 Mei 日语声库采用 CC BY 3.0，归属信息见 DEPENDENCIES.md。\n\n"
             "签名 USB/IP 驱动需单独安装；安装会短暂重启 USB 设备。软件不修改安全启动、"
             "测试签名或证书存储。旧 RadioVoice 仍为可选接入。\n\n"
-            "变声与翻译同时使用：顶部默认将中文翻译为日语后变声发送，队友翻译持续运行。"
-            "选择原声实时发送时，游戏收到变声后的原语言，日语译文仍显示并可本地试听。"
+            "变声与翻译同时使用：顶部默认将中文翻译为所选外语后变声发送，队友翻译持续运行。"
+            "选择原声实时发送时，游戏收到变声后的原语言，外语译文仍显示并可本地试听。"
             "在变声器页选择预设或调整半音；实时监听请戴耳机。\n\n"
             "在「速度与延迟」页调整停顿等待、最长分段和计算模式；下方音量与静音可实时调整。"
             "实际延迟取决于硬件、模型和排队情况，记录页显示处理耗时。"
@@ -362,6 +428,16 @@ class Window(QMainWindow):
         self.refresh_devices()
         self.refresh_processes()
         self.operating_mode.currentIndexChanged.connect(self.update_mode)
+        self.target_language.currentIndexChanged.connect(self.update_languages)
+        self.incoming_language.currentIndexChanged.connect(self.update_languages)
+        self.update_languages()
+        self.update_mode()
+
+    def update_languages(self):
+        target, source = self.target_language.currentText(), self.incoming_language.currentText()
+        self.operating_mode.setItemText(0, f"{target}译音变声 → 虚拟麦克风（推荐）")
+        self.incoming_voice.setText(f"队友{source} → 中文播报，同时显示中文字幕")
+        self.outgoing_monitor.setText(f"试听我说中文后生成的{target}")
         self.update_mode()
 
     def apply_voice_preset(self):
@@ -437,6 +513,8 @@ class Window(QMainWindow):
         self.speed.setCurrentIndex(self.speed.findData(mode))
         self.silence.setValue(silence)
         self.segment.setValue(segment)
+        self.incoming_silence.setValue(200 if mode == "fast" else 300)
+        self.incoming_segment.setValue(2 if mode == "fast" else 3)
         self.asr_threads.setValue(min(8, max(1, (os.cpu_count() or 4) // 2)) if mode == "fast" else 4)
 
     def update_volume(self):
@@ -474,10 +552,10 @@ class Window(QMainWindow):
             if not sending:
                 self.status.setText("就绪 · 接收队友语音，显示字幕及可选中文播报")
             elif live:
-                self.status.setText("就绪 · 原声实时变声发送 + 双向翻译；游戏收到原语言，日语译音可本地试听")
+                self.status.setText("就绪 · 原声实时变声发送 + 双向翻译；游戏收到原语言，外语译音可本地试听")
             else:
-                self.status.setText("就绪 · 中文翻译为日语后变声 · " + ("启用虚拟麦克风发送" if self.send_virtual.isChecked()
-                                                else "本地双向译音试听，不向游戏发送日语"))
+                self.status.setText("就绪 · 中文翻译为" + self.target_language.currentText() + "后变声 · " +
+                    ("启用虚拟麦克风发送" if self.send_virtual.isChecked() else "本地双向译音试听"))
 
     def refresh_devices(self):
         try:
@@ -529,6 +607,12 @@ class Window(QMainWindow):
             self.status.setText(f"读取音频设备失败：{exc}")
 
     def save(self):
+        self.settings.target_language = self.target_language.currentData()
+        self.settings.incoming_language = self.incoming_language.currentData()
+        self.settings.speech_filter = self.speech_filter.currentData()
+        self.settings.incoming_silence_ms = self.incoming_silence.value()
+        self.settings.incoming_max_seconds = self.incoming_segment.value()
+        self.settings.subtitle_original = self.subtitle_original.isChecked()
         self.settings.operating_mode = self.operating_mode.currentData()
         self.settings.microphone = self.mic.currentText()
         self.settings.receive_device = self.receive.currentText()

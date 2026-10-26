@@ -49,7 +49,7 @@ class Capture(threading.Thread):
         super().__init__(name=f'capture-{info["index"]}', daemon=True)
         self.p, self.info, self.destination = p, info, destination
         self.stop, self.enabled, self.settings, self.report = stop, enabled, settings, report
-        self.raw = queue.Queue(maxsize=100)
+        self.raw = queue.Queue(maxsize=25)
         self.dropped = threading.Event()
 
     def callback(self, data, frame_count, time_info, status):
@@ -82,6 +82,12 @@ class Capture(threading.Thread):
                     segmenter = Segmenter(self.settings.silence_ms, self.settings.max_speech_seconds)
                     pending = b""
                     self.report("音频采集拥堵，已丢弃不完整语句")
+                    while self.raw.qsize() > 1:
+                        try:
+                            self.raw.get_nowait()
+                        except queue.Empty:
+                            break
+                    continue
                 pending += to_mono16(data, rate, channels)
                 while len(pending) >= 640:
                     frame, pending = pending[:640], pending[640:]
