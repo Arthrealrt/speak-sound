@@ -1,6 +1,7 @@
 from dataclasses import asdict, dataclass, fields
 import json
 from pathlib import Path
+from .hotkey import normalize_chord
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -22,6 +23,7 @@ class Settings:
     speed_mode: str = "balanced"
     asr_threads: int = 4
     push_to_talk: bool = True
+    ptt_keys: tuple = (0x77,)
     screen: int = 0
     font_size: int = 28
     bottom_margin: int = 36
@@ -44,6 +46,7 @@ class Settings:
     send_muted: bool = False
 
     def __post_init__(self):
+        self.ptt_keys = normalize_chord(self.ptt_keys)
         for field in ("target_language", "incoming_language"):
             if getattr(self, field) not in ("ja", "en"):
                 setattr(self, field, "ja")

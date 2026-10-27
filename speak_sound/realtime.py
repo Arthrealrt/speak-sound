@@ -10,6 +10,7 @@ import webrtcvad
 
 from .voice import VoiceProcessor
 from .segmenter import Segmenter
+from .hotkey import chord_text
 
 
 def resample(samples, source_rate, target_rate):
@@ -126,7 +127,7 @@ class RealtimeVoice(threading.Thread):
             stream = self.p.open(format=pa.paInt16, channels=channels, rate=rate,
                                  input=True, input_device_index=int(self.mic["index"]),
                                  frames_per_buffer=round(rate * .02), stream_callback=self.callback)
-            self.report("实时变声与双向翻译运行中 · " + ("按住 F8 发送原声变声，同时翻译" if self.settings.push_to_talk else "连续发送原声变声，同时翻译"))
+            self.report("实时变声与双向翻译运行中 · " + (f"按住 {chord_text(self.settings.ptt_keys)} 发送原声变声，同时翻译" if self.settings.push_to_talk else "连续发送原声变声，同时翻译"))
             while not self.stop.is_set():
                 try:
                     data, enabled = self.raw.get(timeout=.1)

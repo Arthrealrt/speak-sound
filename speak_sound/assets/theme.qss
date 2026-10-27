@@ -1,7 +1,10 @@
 /* True-black flat. Neutral controls; the audio-status signal is the only hue. */
 QWidget { color: #ffffff; background: transparent; font-size: 14px; }
-QWidget#appRoot, QWidget#sidebar, QWidget#workspace { background: #000000; }
-QWidget#sidebar { border-right: 1px solid #1a1a1a; }
+QMainWindow, QWidget#appRoot { background: transparent; }
+QWidget#workspace, QDialog#keyDialog { background: #000000; }
+QWidget#sidebar { background: rgba(12, 14, 17, 190); border: none; }
+QPushButton#windowControl { padding: 0; min-height: 0; border: none; border-radius: 6px; background: transparent; }
+QPushButton#windowControl:hover { background: #333333; }
 QFrame#panel { background: #111111; border: none; border-radius: 20px; }
 QLabel[role="brand"] { font-size: 19px; font-weight: 600; }
 QLabel[role="title"] { font-size: 24px; font-weight: 600; }
@@ -9,6 +12,8 @@ QLabel[role="section"] { font-size: 16px; font-weight: 600; }
 QLabel[role="label"] { font-size: 13px; font-weight: 500; color: #b4b4b4; }
 QLabel[role="muted"] { color: #b4b4b4; font-size: 13px; }
 QLabel[role="meta"], QLabel#statusText { color: #949494; font-size: 12px; }
+QWidget#sidebar QLabel[role="muted"] { color: #dedede; }
+QWidget#sidebar QLabel[role="meta"] { color: #c4c4c4; }
 QLabel[role="translation"] { font-size: 21px; font-weight: 500; }
 QLabel[role="status"] { color: #b4b4b4; font-size: 12px; padding: 6px 8px; }
 QLabel[role="status"][active="true"] { color: #78d7b2; }

@@ -1,6 +1,7 @@
 import os
 import unittest
 from unittest.mock import patch
+from PySide6.QtWidgets import QApplication
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from speak_sound.config import Settings
@@ -10,7 +11,7 @@ from speak_sound.ui import Window, Subtitle, create_application
 class CombinedUiTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = create_application([])
+        cls.app = QApplication.instance() or create_application([])
 
     def test_both_routes_keep_incoming_process_selection_and_japanese_monitor(self):
         with patch.object(Window, 'refresh_devices'), patch.object(Window, 'refresh_processes'), \

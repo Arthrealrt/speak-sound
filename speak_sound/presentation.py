@@ -9,6 +9,8 @@ from PySide6.QtWidgets import (QWidget, QFrame, QLabel, QPushButton, QVBoxLayout
 
 from . import __version__
 from .subtitles import subtitle_pages
+from .window_chrome import NavButton, TitleBar
+from .hotkey import chord_text
 
 
 def brand_icon():
@@ -182,6 +184,7 @@ def assemble_window(w):
 
     sidebar, side = column(margins=22, gap=8)
     sidebar.setObjectName('sidebar')
+    w.sidebar = sidebar
     sidebar.setFixedWidth(186)
     icon = brand_icon()
     w.setWindowIcon(icon)
@@ -199,7 +202,7 @@ def assemble_window(w):
                     '分别调整你和队友的分句时间。', '查看本次运行的原文、译文和处理耗时。',
                     '设备选择、离线模型与常见问题。']
     for index, name in enumerate(names):
-        button = QPushButton(name)
+        button = NavButton(name)
         button.setObjectName('navButton')
         button.setCheckable(True)
         button.setAccessibleName(name)
@@ -214,6 +217,8 @@ def assemble_window(w):
     canvas, body = column(margins=24, gap=14)
     canvas.setObjectName('workspace')
     shell.addWidget(canvas, 1)
+    w.title_bar = TitleBar(w)
+    body.addWidget(w.title_bar)
     header = QHBoxLayout()
     heading, headings = column(gap=5)
     w.page_title = text(names[0], 'title')
@@ -243,7 +248,14 @@ def assemble_window(w):
     send.addWidget(field('译音发送到', w.output))
     w.send_virtual.setText('发送至虚拟麦克风')
     send.addWidget(w.send_virtual)
-    send.addWidget(w.ptt)
+    ptt_row = QHBoxLayout()
+    ptt_row.addWidget(w.ptt)
+    ptt_row.addStretch()
+    w.ptt_key = QPushButton('修改按键 · ' + chord_text(w.settings.ptt_keys))
+    w.ptt_key.setAccessibleName('修改按住说话按键')
+    w.ptt_key.clicked.connect(w.choose_ptt_key)
+    ptt_row.addWidget(w.ptt_key)
+    send.addLayout(ptt_row)
     send.addStretch()
     receiving, receive = panel('队友语音')
     w.receiving_path = text('', 'muted')
@@ -417,7 +429,7 @@ def assemble_window(w):
         signal = control.currentIndexChanged if isinstance(control, QComboBox) else control.toggled
         signal.connect(w.refresh_summary)
     focus_order = [w.start_button, w.stop_button, w.operating_mode, w.target_language, w.mic,
-        w.output, w.send_virtual, w.ptt, w.incoming_language, w.receive_mode, w.receive,
+        w.output, w.send_virtual, w.ptt, w.ptt_key, w.incoming_language, w.receive_mode, w.receive,
         w.process, w.process_refresh, w.receive_only, w.incoming_volume, w.outgoing_volume,
         w.send_volume, w.mute, w.send_mute, *w.nav_buttons, w.virtual_button, w.refresh,
         w.speech_filter, w.listen, w.incoming_voice, w.outgoing_monitor, w.screen,

@@ -24,6 +24,9 @@ from .voice import PRESETS
 from . import __version__
 from .subtitles import subtitle_pages
 from .presentation import assemble_window, stylesheet, brand_icon
+from .hotkey import PushToTalkGate, chord_text
+from .key_dialog import KeyDialog
+from .window_chrome import resize_hit
 
 
 class Subtitle(QWidget):
@@ -96,6 +99,10 @@ class Window(QMainWindow):
 
     def __init__(self):
         super().__init__()
+        self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.ptt_gate = PushToTalkGate()
+        self.binding_key = False
         try:
             self.settings = Settings.load()
         except (ValueError, TypeError):
@@ -274,7 +281,7 @@ class Window(QMainWindow):
         self.voice_effect.currentIndexChanged.connect(self.update_voice)
         voice_hint = QLabel("变声与双向翻译同时运行。推荐发送外语译音：中文先翻译成所选日语或英语，再变声发送；"
                             "队友外语持续翻译为中文字幕和中文播报，中文播报不加变声。\n\n"
-                            "也可选择原声实时发送：按住 F8 立即发送变声后的原语言，松开提交翻译；"
+                            "也可选择原声实时发送：按住设定按键立即发送变声后的原语言，松开提交翻译；"
                             "外语译文仍显示在记录页，并可本地试听，但不会再向游戏发送外语译音。"
                             "所有模式均使用本地模型。选择「仅双向翻译」可直接发送合成译音，不进行变声。\n\n"
                             "音高、音效与启用开关可运行时调整。此功能为本地 DSP 音效，"
@@ -328,7 +335,7 @@ class Window(QMainWindow):
         balanced = QPushButton("应用均衡预设（400 ms / 5 秒）")
         balanced.clicked.connect(lambda: self.set_timing("balanced", 400, 5))
         timing_form.addRow(balanced)
-        timing_hint = QLabel("停止后可调整，下次开始生效。F8 松开即提交，不额外等待停顿。\n\n"
+        timing_hint = QLabel("停止后可调整，下次开始生效。说话按键松开即提交，不额外等待停顿。\n\n"
                             "等待越短，出字幕越快，但自然停顿更容易把一句话切断；分段越短，"
                             "长句越早开始处理，但上下文减少、计算次数增加。\n\n"
                             "接收默认 240 ms / 2.5 秒独立分段，只保留最新一条待处理语音，避免旧字幕积压。\n\n"
@@ -397,9 +404,9 @@ class Window(QMainWindow):
             "发送输出选 Speak Sound Virtual Cable 的播放端。\n\n"
             "4. 游戏 / Discord / 其他语音软件：输入设备选 Speak Sound Virtual Cable 的麦克风端；输出设备选耳机。"
             "目标软件使用语音激活或持续输入；它的按键说话必须覆盖翻译播放时段，"
-            "本软件 F8 松开后才开始翻译。\n\n"
+            "本软件松开说话按键后才开始翻译。\n\n"
             "5. 在「语音工作台」分别选择发送语言（日语 / 英语）和队友语言，再开始翻译。"
-            "按住 F8 说中文、松开；队友讲话会在底部显示中文，透明背景、最多两行。\n\n"
+            "按住设定按键说中文、松开；队友讲话会在底部显示中文，透明背景、最多两行。\n\n"
             "耳机回环包含该耳机播放的全部声音。为了减少游戏音效干扰，"
             "可改选「指定运行进程」，刷新并选择 Discord 或游戏 PID。采集包含子进程，"
             "不能在同一个游戏进程中分离队友语音与游戏音效。进程退出后停止，重启需重新选择。\n\n"
@@ -591,7 +598,12 @@ class Window(QMainWindow):
             self.monitor_live_voice.setEnabled(live and sending and self.service is None)
         self.listen.setEnabled(self.incoming_voice.isChecked() or (sending and
                                (self.outgoing_monitor.isChecked() or (live and live_monitor))))
-        self.ptt.setText("按住 F8 连续发送原声变声" if live else "按住 F8 说话，松开提交译文")
+        key = chord_text(self.settings.ptt_keys)
+        self.ptt.setText("按住说话")
+        self.ptt.setToolTip(f"按住 {key} 连续发送原声变声" if live else f"按住 {key} 说话，松开提交译文")
+        self.ptt.setAccessibleDescription(self.ptt.toolTip())
+        if hasattr(self, "ptt_key"):
+            self.ptt_key.setEnabled(sending and self.service is None)
         if hasattr(self, "status") and self.service is None:
             self.start_button.setText("开始双向翻译" if translation_only else "开始双向翻译 + 变声")
             if not sending:
@@ -716,6 +728,7 @@ class Window(QMainWindow):
             return
         self.save()
         self.stop_requested = False
+        self.ptt_gate.reset()
         self.service = Service(self.settings, target)
         self.service.events.status.connect(self.status.setText)
         self.service.events.subtitle.connect(self.overlay.display)
@@ -732,12 +745,35 @@ class Window(QMainWindow):
         self.run_badge.setText("准备中")
         self.service.start()
 
+    def choose_ptt_key(self):
+        if self.service:
+            return
+        self.binding_key = True
+        self.ptt_gate.reset()
+        dialog = KeyDialog(self.settings.ptt_keys, self)
+        try:
+            if dialog.exec() == KeyDialog.DialogCode.Accepted:
+                self.settings.ptt_keys = dialog.chord
+                self.settings.save()
+                self.ptt_key.setText('修改按键 · ' + chord_text(dialog.chord))
+                self.update_mode()
+        finally:
+            self.binding_key = False
+            self.ptt_gate.reset()
+            dialog.deleteLater()
+
     def poll_ptt(self):
         if self.service:
-            if ctypes.windll.user32.GetAsyncKeyState(0x77) & 0x8000:
+            active = (not self.binding_key and not self.stop_requested and
+                      self.ptt_gate.pressed(self.settings.ptt_keys))
+            if active:
                 self.service.talking.set()
             else:
                 self.service.talking.clear()
+
+    def nativeEvent(self, event_type, message):
+        hit = resize_hit(self, event_type, message)
+        return (True, hit) if hit is not None else super().nativeEvent(event_type, message)
 
     def record(self, direction, original, translated, elapsed):
         label = "队友 → 你" if direction == "in" else "你 → 队友"

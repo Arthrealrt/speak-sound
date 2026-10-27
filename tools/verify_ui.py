@@ -30,7 +30,7 @@ def contrast(first, second):
 
 
 def main():
-    output = ROOT / 'work/ui-v09'
+    output = ROOT / 'work/ui-v10'
     output.mkdir(parents=True, exist_ok=True)
     app = create_application([])
     reports, snapshots = [], []
@@ -61,6 +61,10 @@ def main():
                 name = f'home-{width}.png'
                 assert window.grab().save(str(output / name))
                 snapshots.append(name)
+                image = window.grab().toImage()
+                ratio = window.devicePixelRatioF()
+                assert image.pixelColor(round(10 * ratio), round(500 * ratio)).alpha() == 190
+                assert image.pixelColor(round(200 * ratio), round(500 * ratio)).alpha() == 255
                 reports.append(dict(width=width, height=height, stacked_audio_lanes=window.home.compact,
                     microphone_control_height=window.mic.height(),
                     live_controls_visible=window.incoming_volume.isVisible(),
@@ -82,6 +86,7 @@ def main():
             assert 'Inter' in family
             result = dict(method='Native Qt rendering and object geometry checks; no DOM inspection',
                 font=family, views=reports, contrast_ratios=colors, screenshots=snapshots,
+                sidebar_alpha=190, workspace_alpha=255,
                 physical_audio_capture=False, model_inference=False, user_config_written=False)
             (output / 'checks.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
             print(json.dumps(result, ensure_ascii=False))
