@@ -43,6 +43,7 @@ class Service:
         children = []
         try:
             live = self.settings.operating_mode == "live_translation"
+            translation_only = self.settings.operating_mode == "translation_only"
             if not self.settings.receive_only:
                 require_physical_microphone(self.settings.microphone)
             models = LocalModels(self.settings, self.events.status.emit, self.stop.is_set)
@@ -122,7 +123,8 @@ class Service:
                             self.sending.set()
                             try:
                                 samples, rate = models.synthesize(translated, self.settings.target_language)
-                                samples = process_utterance(samples, rate, self.settings)
+                                if not translation_only:
+                                    samples = process_utterance(samples, rate, self.settings)
                                 if not self.stop.is_set():
                                     if self.settings.monitor_outgoing:
                                         local.submit(samples, rate, "out")
@@ -165,8 +167,9 @@ class Service:
                 self.events.status.emit("队友翻译运行中 · " + incoming_name + " → 中文字幕" + ("及中文播报" if self.settings.speak_incoming else ""))
             else:
                 route = ("实时原声变声发送，译文继续显示/试听" if live
-                         else "中文 → " + target_name + "译音" + (" → 变声" if self.settings.voice_enabled else ""))
-                self.events.status.emit("双向翻译运行中 · " + route +
+                         else "中文 → " + target_name + "译音" +
+                            (" → 变声" if self.settings.voice_enabled and not translation_only else ""))
+                self.events.status.emit(("独立双向翻译运行中（不变声） · " if translation_only else "双向翻译运行中 · ") + route +
                     (" · 虚拟麦克风发送已开启" if self.settings.send_to_virtual else " · 本地试听"))
             self.stop.wait()
         except Exception as exc:

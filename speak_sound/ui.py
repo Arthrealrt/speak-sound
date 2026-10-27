@@ -116,7 +116,8 @@ class Window(QMainWindow):
         layout.addWidget(title)
         layout.addWidget(QLabel("中文 → 日语 / 英语虚拟麦克风    ·    队友外语 → 底部中文字幕"))
         self.operating_mode = QComboBox()
-        layout.addWidget(QLabel("声音发送方式 · 两种方式均保持双向翻译"))
+        layout.addWidget(QLabel("功能模式 · 仅双向翻译 / 翻译与变声同时运行"))
+        self.operating_mode.addItem("仅双向翻译（不变声）", "translation_only")
         self.operating_mode.addItem("日语译音变声 → 虚拟麦克风（推荐）", "translation")
         self.operating_mode.addItem("原声实时变声 → 虚拟麦克风，同时双向翻译", "live_translation")
         self.operating_mode.setCurrentIndex(self.operating_mode.findData(self.settings.operating_mode))
@@ -236,7 +237,9 @@ class Window(QMainWindow):
         playback_form.addRow(hint)
         self.tabs.addTab(self.playback_controls, "译音播放")
         voice_page = QWidget()
+        self.voice_controls = voice_page
         voice_form = QFormLayout(voice_page)
+        voice_form.addRow(QLabel("顶部选择「仅双向翻译」时，此页不生效；原有音效设置会保留。"))
         self.voice_enable = QCheckBox("启用变声（实时麦克风或发送的日语译音）")
         self.voice_enable.setChecked(self.settings.voice_enabled)
         voice_form.addRow(self.voice_enable)
@@ -272,7 +275,7 @@ class Window(QMainWindow):
                             "队友外语持续翻译为中文字幕和中文播报，中文播报不加变声。\n\n"
                             "也可选择原声实时发送：按住 F8 立即发送变声后的原语言，松开提交翻译；"
                             "外语译文仍显示在记录页，并可本地试听，但不会再向游戏发送外语译音。"
-                            "两种发送方式均使用本地模型。\n\n"
+                            "所有模式均使用本地模型。选择「仅双向翻译」可直接发送合成译音，不进行变声。\n\n"
                             "音高、音效与启用开关可运行时调整。此功能为本地 DSP 音效，"
                             "没有 AI 音色克隆或共振峰保持，不能保证模仿特定人物。\n\n"
                             "实时变声监听必须戴耳机，避免扬声器声音进入麦克风形成啸叫。"
@@ -406,6 +409,8 @@ class Window(QMainWindow):
             "变声与翻译同时使用：顶部默认将中文翻译为所选外语后变声发送，队友翻译持续运行。"
             "选择原声实时发送时，游戏收到变声后的原语言，外语译文仍显示并可本地试听。"
             "在变声器页选择预设或调整半音；实时监听请戴耳机。\n\n"
+            "独立双向翻译：顶部选择「仅双向翻译」，直接发送合成的外语译音，不应用变声音效；"
+            "队友字幕、中文播报、外语试听与音量设置照常使用。变声页的设置会保留，切回其他模式后恢复。\n\n"
             "在「速度与延迟」页调整停顿等待、最长分段和计算模式；下方音量与静音可实时调整。"
             "实际延迟取决于硬件、模型和排队情况，记录页显示处理耗时。"
         )
@@ -435,7 +440,11 @@ class Window(QMainWindow):
 
     def update_languages(self):
         target, source = self.target_language.currentText(), self.incoming_language.currentText()
-        self.operating_mode.setItemText(0, f"{target}译音变声 → 虚拟麦克风（推荐）")
+        pair = f"中文与{target}" if target == source else f"中文 → {target} / {source} → 中文"
+        self.operating_mode.setItemText(self.operating_mode.findData("translation_only"),
+                                       f"仅双向翻译 · {pair}（不变声）")
+        self.operating_mode.setItemText(self.operating_mode.findData("translation"),
+                                       f"{target}译音变声 → 虚拟麦克风")
         self.incoming_voice.setText(f"队友{source} → 中文播报，同时显示中文字幕")
         self.outgoing_monitor.setText(f"试听我说中文后生成的{target}")
         self.update_mode()
@@ -532,6 +541,9 @@ class Window(QMainWindow):
             return
         sending = not self.receive_only.isChecked()
         live = self.operating_mode.currentData() == "live_translation"
+        translation_only = self.operating_mode.currentData() == "translation_only"
+        if hasattr(self, "voice_controls"):
+            self.voice_controls.setEnabled(not translation_only)
         by_process = self.receive_mode.currentData() == "process"
         self.process.setEnabled(by_process)
         self.process_refresh.setEnabled(by_process)
@@ -548,11 +560,14 @@ class Window(QMainWindow):
                                (self.outgoing_monitor.isChecked() or (live and live_monitor))))
         self.ptt.setText("按住 F8 连续发送原声变声，松开提交翻译" if live else "按住 F8 说中文，松开后发送翻译（推荐）")
         if hasattr(self, "status") and self.service is None:
-            self.start_button.setText("开始双向翻译 + 变声")
+            self.start_button.setText("开始双向翻译" if translation_only else "开始双向翻译 + 变声")
             if not sending:
                 self.status.setText("就绪 · 接收队友语音，显示字幕及可选中文播报")
             elif live:
                 self.status.setText("就绪 · 原声实时变声发送 + 双向翻译；游戏收到原语言，外语译音可本地试听")
+            elif translation_only:
+                self.status.setText("就绪 · 独立双向翻译（不变声） · 中文 → " + self.target_language.currentText() +
+                    (" · 虚拟麦克风发送" if self.send_virtual.isChecked() else " · 本地译音试听"))
             else:
                 self.status.setText("就绪 · 中文翻译为" + self.target_language.currentText() + "后变声 · " +
                     ("启用虚拟麦克风发送" if self.send_virtual.isChecked() else "本地双向译音试听"))

@@ -17,7 +17,7 @@ class CombinedUiTests(unittest.TestCase):
              patch.object(Settings, 'load', return_value=Settings()):
             window = Window()
         try:
-            for route in ('translation', 'live_translation'):
+            for route in ('translation_only', 'translation', 'live_translation'):
                 window.operating_mode.setCurrentIndex(window.operating_mode.findData(route))
                 self.assertTrue(window.receive_mode.isEnabled())
                 self.assertTrue(window.receive_only.isEnabled())
@@ -31,6 +31,33 @@ class CombinedUiTests(unittest.TestCase):
                 self.assertFalse(window.send_virtual.isEnabled())
                 window.receive_only.setChecked(False)
                 self.assertTrue(window.mic.isEnabled())
+        finally:
+            window.volume_save.stop()
+            window.close()
+
+    def test_translation_only_disables_effects_and_restores_controls_when_switching_back(self):
+        with patch.object(Window, 'refresh_devices'), patch.object(Window, 'refresh_processes'), \
+             patch.object(Settings, 'load', return_value=Settings(voice_enabled=True, voice_pitch=-5, voice_effect='robot')):
+            window = Window()
+        try:
+            window.operating_mode.setCurrentIndex(window.operating_mode.findData('translation_only'))
+            self.assertFalse(window.voice_enable.isEnabled())
+            self.assertFalse(window.voice_pitch.isEnabled())
+            self.assertFalse(window.voice_effect.isEnabled())
+            self.assertEqual(window.start_button.text(), '开始双向翻译')
+            self.assertTrue(window.incoming_voice.isEnabled())
+            self.assertTrue(window.outgoing_monitor.isEnabled())
+            self.assertTrue(window.send_virtual.isEnabled())
+            with patch.object(Settings, 'save'):
+                window.save()
+            self.assertEqual(window.settings.operating_mode, 'translation_only')
+            self.assertTrue(window.settings.voice_enabled)
+            self.assertEqual(window.settings.voice_pitch, -5)
+            self.assertEqual(window.settings.voice_effect, 'robot')
+            window.operating_mode.setCurrentIndex(window.operating_mode.findData('translation'))
+            self.assertTrue(window.voice_pitch.isEnabled())
+            self.assertEqual(window.voice_pitch.value(), -5)
+            self.assertEqual(window.voice_effect.currentData(), 'robot')
         finally:
             window.volume_save.stop()
             window.close()

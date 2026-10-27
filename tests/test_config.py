@@ -6,6 +6,14 @@ from speak_sound.config import Settings
 
 
 class ConfigTests(unittest.TestCase):
+    def test_independent_translation_mode_roundtrips_without_erasing_effect_preferences(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'config.json'
+            settings = Settings(operating_mode='translation_only', voice_enabled=True, voice_pitch=-5,
+                                target_language='en', incoming_language='ja')
+            settings.save(path)
+            self.assertEqual(Settings.load(path), settings)
+
     def test_language_filter_and_receive_timing_are_validated(self):
         settings = Settings(target_language='xx', incoming_language='en', speech_filter='bad',
                             incoming_silence_ms=-1, incoming_max_seconds=99)

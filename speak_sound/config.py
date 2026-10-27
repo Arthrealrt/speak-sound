@@ -64,7 +64,7 @@ class Settings:
             self.voice_effect = "clean"
         if self.operating_mode == "voice_changer":
             self.operating_mode = "live_translation"
-        if self.operating_mode not in ("translation", "live_translation"):
+        if self.operating_mode not in ("translation_only", "translation", "live_translation"):
             self.operating_mode = "translation"
         if self.speed_mode not in ("fast", "balanced"):
             self.speed_mode = "balanced"

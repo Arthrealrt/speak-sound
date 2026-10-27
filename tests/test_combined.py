@@ -63,6 +63,7 @@ class CombinedTests(unittest.TestCase):
         model.translate.side_effect = lambda text, source, target: '队友在右边' if target == 'zh' else ('Enemy on the right' if target == 'en' else '右にいます')
         model.synthesize.side_effect = lambda text, lang='ja': (np.full(320, .4 if lang == 'zh' else .2, np.float32), 16000)
         captures, live_sends, played, transcripts, subtitles = [], [], [], [], []
+        played_samples = []
 
         class Source(threading.Thread):
             def __init__(self, p, info, destination, stop, enabled, settings, report):
@@ -88,6 +89,7 @@ class CombinedTests(unittest.TestCase):
 
         def play(p, info, samples, rate, stop, volume=lambda: 1):
             played.append((info['role'], float(np.mean(samples))))
+            played_samples.append((info['role'], samples.copy()))
 
         def effect(samples, rate, settings):
             self.assertEqual(settings.voice_pitch, -5)
@@ -101,7 +103,8 @@ class CombinedTests(unittest.TestCase):
              patch.object(module, 'Capture', Source), patch.object(module, 'RealtimeVoice', LiveSource), \
              patch.object(module, 'process_utterance', side_effect=effect) as dsp, patch.object(module, 'play', play):
             service.start()
-            expected_plays = (3 if mode == 'translation' else 2) if monitor else 1
+            translated_route = mode != 'live_translation'
+            expected_plays = 1 + int(monitor) + int(translated_route)
             deadline = time.monotonic() + 4
             while time.monotonic() < deadline and (len(played) < expected_plays or len(transcripts) < 2):
                 time.sleep(.01)
@@ -114,18 +117,34 @@ class CombinedTests(unittest.TestCase):
         model.translate.assert_any_call('队友在右边', 'zh', target)
         self.assertIn(('headphones', .4), [(role, round(value, 1)) for role, value in played])
         self.assertEqual(captures.count('microphone') + captures.count('live_microphone'), 1)
-        if mode == 'translation':
-            self.assertIn(('RadioVoice Output', .1), [(role, round(value, 1)) for role, value in played])
+        outgoing_gain = .2 if mode == 'translation_only' else .1
+        if translated_route:
+            self.assertIn(('RadioVoice Output', outgoing_gain), [(role, round(value, 1)) for role, value in played])
             self.assertFalse(live_sends)
         else:
             self.assertEqual(len(live_sends), 1)
             self.assertNotIn('RadioVoice Output', [role for role, value in played])
-        self.assertEqual(dsp.call_count, int(monitor or mode == 'translation'))
+        self.assertEqual(dsp.call_count, int(mode != 'translation_only' and (monitor or translated_route)))
         if monitor:
-            self.assertIn(('headphones', .1), [(role, round(value, 1)) for role, value in played])
+            self.assertIn(('headphones', outgoing_gain), [(role, round(value, 1)) for role, value in played])
+        if mode == 'translation_only':
+            for role, samples in played_samples:
+                if role == 'RadioVoice Output':
+                    np.testing.assert_array_equal(samples, np.full(320, .2, np.float32))
+            self.assertTrue(settings.voice_enabled)
+            self.assertEqual(settings.voice_pitch, -5)
 
     def test_translated_voice_effect_and_both_directions(self):
         self.run_combined('translation')
+
+    def test_independent_japanese_translation_bypasses_effects_and_preserves_voice_preferences(self):
+        self.run_combined('translation_only')
+
+    def test_independent_english_translation_keeps_both_directions_without_effects(self):
+        self.run_combined('translation_only', target='en', source='en')
+
+    def test_independent_translation_sends_without_local_foreign_monitor(self):
+        self.run_combined('translation_only', monitor=False)
 
     def test_live_original_route_keeps_both_directions_and_japanese_monitor(self):
         self.run_combined('live_translation')
