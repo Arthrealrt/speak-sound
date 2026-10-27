@@ -5,6 +5,7 @@
 | 组件 | 许可与来源 |
 | --- | --- |
 | 应用源码 | [MIT](LICENSE) |
+| Inter 字体 | SIL Open Font License 1.1；[上游](https://github.com/rsms/inter)，Copyright 2016 The Inter Project Authors；随源码保留 [字体许可](speak_sound/assets/Inter-OFL.txt)。中文使用 Windows 自带字体回退，不重新分发系统字体 |
 | pycaw / comtypes | MIT；用于在 Windows 自动把新虚拟声卡设为默认时，按角色恢复连接前的默认设备；[pycaw](https://github.com/AndreMiras/pycaw)、[comtypes](https://github.com/enthought/comtypes) |
 | 变声 DSP | 本项目 MIT，使用现有 NumPy / SciPy；不引入专有音效库或新模型 |
 | Virtual Cables 用户态 USB 协议 / 缓冲源码 | BSD-2-Clause；[固定提交](https://github.com/tarekwasfy01/Virtual-Cables/tree/8a819c29971d30a73955178ac8a3aac00b1a5230)，[许可](native/virtual-mic/LICENSE)及[修改说明](native/virtual-mic/NOTICE.md)随源码发布 |

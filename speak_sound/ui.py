@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pyaudiowpatch as pa
 from PySide6.QtCore import Qt, QTimer, QLocale, Signal
-from PySide6.QtGui import QCloseEvent, QFont, QFontDatabase, QColor
+from PySide6.QtGui import QCloseEvent, QFont, QFontDatabase, QColor, QPalette
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFormLayout,
     QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton, QSpinBox,
     QTabWidget, QTextEdit, QVBoxLayout, QWidget, QSlider, QDoubleSpinBox, QScrollArea,
@@ -23,6 +23,7 @@ from .virtual_mic import VirtualMicrophone
 from .voice import PRESETS
 from . import __version__
 from .subtitles import subtitle_pages
+from .presentation import assemble_window, stylesheet, brand_icon
 
 
 class Subtitle(QWidget):
@@ -112,7 +113,7 @@ class Window(QMainWindow):
         self.setCentralWidget(root)
         layout = QVBoxLayout(root)
         title = QLabel("Speak Sound")
-        title.setStyleSheet("font-size: 32px; font-weight: 700; color: #aab9ff;")
+        title.setStyleSheet("font-size: 24px; font-weight: 600; color: #ffffff;")
         layout.addWidget(title)
         layout.addWidget(QLabel("中文 → 日语 / 英语虚拟麦克风    ·    队友外语 → 底部中文字幕"))
         self.operating_mode = QComboBox()
@@ -388,16 +389,16 @@ class Window(QMainWindow):
             "首次使用\n\n"
             "1. 运行 setup.ps1，安装依赖并下载本地模型。之后翻译可以断网运行。\n\n"
             "本地双向试听：选择实体麦克风和接收回环，在「译音播放」页选择耳机，"
-            "启用中文播报与外语试听；保持虚拟麦克风发送关闭即可无需驱动使用。\n\n"
-            "只收队友：勾选「仅接收队友语音」；若只看字幕，再关闭「译音播放」页的中文播报。\n\n"
-            "2. 按 drivers/README.md 安装签名开源 USB/IP 运输驱动，再在设备页点击连接虚拟麦克风。"
+            "在「字幕与播放」启用中文播报与外语试听；保持虚拟麦克风发送关闭即可无需驱动使用。\n\n"
+            "只收队友：勾选「只接收队友」；若只看字幕，再关闭「字幕与播放」的中文播报。\n\n"
+            "2. 按 drivers/README.md 安装签名开源 USB/IP 运输驱动，再在「音频连接」点击连接虚拟麦克风。"
             "这会创建 Speak Sound Virtual Cable 的播放端和麦克风端；保持系统安全设置不变。\n\n"
             "3. 本软件：实体麦克风选你的麦克风；接收语音选耳机对应的 [Loopback]；"
             "发送输出选 Speak Sound Virtual Cable 的播放端。\n\n"
             "4. 游戏 / Discord / 其他语音软件：输入设备选 Speak Sound Virtual Cable 的麦克风端；输出设备选耳机。"
             "目标软件使用语音激活或持续输入；它的按键说话必须覆盖翻译播放时段，"
             "本软件 F8 松开后才开始翻译。\n\n"
-            "5. 在设备页分别选择发送语言（日语 / 英语）和队友语言，再开始翻译。"
+            "5. 在「语音工作台」分别选择发送语言（日语 / 英语）和队友语言，再开始翻译。"
             "按住 F8 说中文、松开；队友讲话会在底部显示中文，透明背景、最多两行。\n\n"
             "耳机回环包含该耳机播放的全部声音。为了减少游戏音效干扰，"
             "可改选「指定运行进程」，刷新并选择 Discord 或游戏 PID。采集包含子进程，"
@@ -427,6 +428,7 @@ class Window(QMainWindow):
         self.status = QLabel("就绪 · 请先选择三个音频设备")
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
+        assemble_window(self)
         self.poll = QTimer(self)
         self.poll.timeout.connect(self.poll_ptt)
         self.poll.start(20)
@@ -449,6 +451,32 @@ class Window(QMainWindow):
         self.outgoing_monitor.setText(f"试听我说中文后生成的{target}")
         self.update_mode()
 
+    def refresh_summary(self, *unused):
+        if not hasattr(self, "sending_path"):
+            return
+        mode = self.operating_mode.currentData()
+        destination = "虚拟麦克风" if self.send_virtual.isChecked() else "本地试听"
+        if self.receive_only.isChecked():
+            route = "实体麦克风已关闭"
+        elif mode == "live_translation":
+            route = "原声 → " + ("变声 → " if self.voice_enable.isChecked() else "") + destination
+        else:
+            route = "中文 → " + self.target_language.currentText()
+            if mode != "translation_only" and self.voice_enable.isChecked():
+                route += " → 变声"
+            route += " → " + destination
+        self.sending_path.setText(route)
+        receiving = self.incoming_language.currentText() + " → 中文 → 底部字幕"
+        if self.incoming_voice.isChecked() and not self.mute.isChecked() and self.incoming_volume.value() > 0:
+            receiving += " / 中文播报"
+        self.receiving_path.setText(receiving)
+
+    def audio_active(self, active):
+        self.run_badge.setText("翻译中" if active else "已停止")
+        self.run_badge.setProperty("active", active)
+        self.run_badge.style().unpolish(self.run_badge)
+        self.run_badge.style().polish(self.run_badge)
+
     def apply_voice_preset(self):
         key = self.voice_preset.currentData()
         if key in PRESETS:
@@ -464,6 +492,7 @@ class Window(QMainWindow):
         self.settings.voice_effect = self.voice_effect.currentData()
         if hasattr(self, "volume_save"):
             self.volume_save.start(350)
+        self.refresh_summary()
 
     def update_live_monitor(self):
         self.settings.monitor_live_voice = self.monitor_live_voice.isChecked()
@@ -535,6 +564,7 @@ class Window(QMainWindow):
         for slider, label in zip((self.incoming_volume, self.outgoing_volume), self.volume_labels):
             label.setText(f"{slider.value()}%")
         self.volume_save.start(350)
+        self.refresh_summary()
 
     def update_mode(self):
         if not hasattr(self, "outgoing_monitor"):
@@ -548,6 +578,9 @@ class Window(QMainWindow):
         self.process.setEnabled(by_process)
         self.process_refresh.setEnabled(by_process)
         self.receive.setEnabled(not by_process)
+        if hasattr(self, "process_field"):
+            self.process_field.setVisible(by_process)
+            self.receive_device_field.setVisible(not by_process)
         self.mic.setEnabled(sending)
         self.output.setEnabled(sending and self.send_virtual.isChecked())
         self.send_virtual.setEnabled(sending)
@@ -558,7 +591,7 @@ class Window(QMainWindow):
             self.monitor_live_voice.setEnabled(live and sending and self.service is None)
         self.listen.setEnabled(self.incoming_voice.isChecked() or (sending and
                                (self.outgoing_monitor.isChecked() or (live and live_monitor))))
-        self.ptt.setText("按住 F8 连续发送原声变声，松开提交翻译" if live else "按住 F8 说中文，松开后发送翻译（推荐）")
+        self.ptt.setText("按住 F8 连续发送原声变声" if live else "按住 F8 说话，松开提交译文")
         if hasattr(self, "status") and self.service is None:
             self.start_button.setText("开始双向翻译" if translation_only else "开始双向翻译 + 变声")
             if not sending:
@@ -571,6 +604,7 @@ class Window(QMainWindow):
             else:
                 self.status.setText("就绪 · 中文翻译为" + self.target_language.currentText() + "后变声 · " +
                     ("启用虚拟麦克风发送" if self.send_virtual.isChecked() else "本地双向译音试听"))
+        self.refresh_summary()
 
     def refresh_devices(self):
         try:
@@ -687,14 +721,15 @@ class Window(QMainWindow):
         self.service.events.subtitle.connect(self.overlay.display)
         self.service.events.transcript.connect(self.record)
         self.service.events.finished.connect(self.finished)
+        self.service.events.active.connect(self.audio_active)
         self.start_button.setEnabled(False)
         self.operating_mode.setEnabled(False)
-        self.tabs.widget(0).setEnabled(False)
-        self.playback_controls.setEnabled(False)
-        self.timing_controls.setEnabled(False)
+        for widget in self.run_locked_widgets:
+            widget.setEnabled(False)
         self.monitor_live_voice.setEnabled(False)
         self.stop_button.setEnabled(True)
         self.status.setText("正在准备本地模型与双向音频…")
+        self.run_badge.setText("准备中")
         self.service.start()
 
     def poll_ptt(self):
@@ -708,6 +743,7 @@ class Window(QMainWindow):
         label = "队友 → 你" if direction == "in" else "你 → 队友"
         self.history.append(f"<b>{label}</b> · 处理 {elapsed:.1f}s<br>"
                             f"{html.escape(original)}<br><b>{html.escape(translated)}</b><br>")
+        self.translation_preview.display(direction, original, translated, elapsed)
 
     def stop(self):
         self.stop_requested = True
@@ -716,6 +752,7 @@ class Window(QMainWindow):
             self.service.talking.clear()
         self.stop_button.setEnabled(False)
         self.status.setText("正在停止，等待当前模型计算结束…")
+        self.run_badge.setText("停止中")
         self.overlay.hide()
 
     def finished(self):
@@ -725,12 +762,12 @@ class Window(QMainWindow):
         self.overlay.hide()
         self.start_button.setEnabled(True)
         self.operating_mode.setEnabled(True)
-        self.tabs.widget(0).setEnabled(True)
-        self.playback_controls.setEnabled(True)
-        self.timing_controls.setEnabled(True)
+        for widget in self.run_locked_widgets:
+            widget.setEnabled(True)
         self.stop_button.setEnabled(False)
         self.monitor_live_voice.setEnabled(self.operating_mode.currentData() == "live_translation"
                                            and not self.receive_only.isChecked())
+        self.audio_active(False)
         if self.closing:
             self.close()
 
@@ -749,19 +786,39 @@ class Window(QMainWindow):
 
 
 def create_application(argv=None):
+    if sys.platform == "win32":
+        try:
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Arthrealrt.SpeakSound")
+        except (AttributeError, OSError):
+            pass
     QLocale.setDefault(QLocale("zh_CN"))
     app = QApplication(sys.argv if argv is None else argv)
+    app.setApplicationName("Speak Sound")
+    app.setApplicationVersion(__version__)
+    app.setOrganizationName("Speak Sound")
+    app.setWindowIcon(brand_icon())
     if "Microsoft YaHei UI" not in QFontDatabase.families():
         fonts = Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts"
         for name in ("msyh.ttc", "segoeui.ttf"):
             QFontDatabase.addApplicationFont(str(fonts / name))
     app.setFont(QFont("Microsoft YaHei UI", 10))
+    font_path = Path(__file__).parent / "assets/InterVariable.ttf"
+    if font_path.exists():
+        QFontDatabase.addApplicationFont(str(font_path))
+        font = QFont()
+        font.setFamilies(["Inter Variable", "Inter", "Microsoft YaHei UI"])
+        font.setPointSize(10)
+        app.setFont(font)
     app.setStyle("Fusion")
-    app.setStyleSheet("QWidget { background: #131925; color: #eef0f8; font-size: 14px; }"
-                       "QComboBox, QTextEdit { background: #202b3e; padding: 6px; }"
-                       "QSpinBox { background: #202b3e; min-height: 32px; padding: 0 6px; }"
-                       "QPushButton { background: #354787; border-radius: 6px; padding: 10px; }"
-                       "QPushButton:disabled { background: #262e41; color: #8890a3; }")
+    palette = QPalette()
+    for role, color in ((QPalette.ColorRole.Window, "#000000"), (QPalette.ColorRole.Base, "#111111"),
+                         (QPalette.ColorRole.Text, "#ffffff"), (QPalette.ColorRole.WindowText, "#ffffff"),
+                         (QPalette.ColorRole.ButtonText, "#ffffff"), (QPalette.ColorRole.Button, "#262626"),
+                         (QPalette.ColorRole.Highlight, "#444444"), (QPalette.ColorRole.HighlightedText, "#ffffff"),
+                         (QPalette.ColorRole.PlaceholderText, "#949494")):
+        palette.setColor(role, QColor(color))
+    app.setPalette(palette)
+    app.setStyleSheet(stylesheet())
     return app
 
 
