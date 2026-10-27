@@ -11,7 +11,7 @@ import psutil
 import webrtcvad
 
 from .audio import to_mono16
-from .segmenter import Segmenter
+from .segmenter import make_segmenter
 
 
 @dataclass(frozen=True)
@@ -78,7 +78,7 @@ class ProcessCapture(threading.Thread):
             native.start()
             self.report(f"已隔离接收 {self.target.name} · PID {self.target.pid} 及子进程")
             vad = webrtcvad.Vad(self.settings.vad_aggressiveness)
-            segmenter = Segmenter(self.settings.silence_ms, self.settings.max_speech_seconds)
+            segmenter = make_segmenter(self.settings, self.destination)
             pending = b""
             checked = last_data = time.monotonic()
             while not self.stop.is_set():

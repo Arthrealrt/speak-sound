@@ -83,7 +83,7 @@ class Subtitle(QWidget):
             self.hide()
             return
         page = self.pages.pop(0)
-        self.label.setText(page + ("\n" + self.original if self.settings.subtitle_original and self.original else ""))
+        self.label.setText((self.original + "\n" if self.settings.subtitle_original and self.original else "") + page)
         self.show()
         # New incoming subtitles replace pending pages, keeping the overlay current.
         self.timer.start(min(self.settings.subtitle_seconds * 1000, max(1800, len(page) * 65)))
@@ -209,8 +209,9 @@ class Window(QMainWindow):
         self.font_size.setRange(16, 60)
         self.font_size.setValue(self.settings.font_size)
         form.addRow("字幕字号", self.font_size)
-        self.subtitle_original = QCheckBox("字幕附带外语原文（总计最多两行）")
+        self.subtitle_original = QCheckBox("双语对照 · 原文 + 译文（底部字幕每种一行）")
         self.subtitle_original.setChecked(self.settings.subtitle_original)
+        self.subtitle_original.toggled.connect(self.update_bilingual)
         form.addRow(self.subtitle_original)
         form.addRow(QLabel("字幕背景透明，默认只显示中文；长句分页，完整内容保留在记录页。"))
         self.margin = QSpinBox()
@@ -239,7 +240,7 @@ class Window(QMainWindow):
         hint = QLabel("本地播放直接使用现有耳机，无需新驱动。若未勾选发送，外语只供自己试听。\n\n"
                       "指定进程模式只收目标及其子进程的声音，播放译音时仍可收队友。"
                       "整个设备模式会在译音播放时暂停接收，以防循环翻译。"
-                      "实体麦克风在译音播放时均暂停，建议佩戴耳机。\n\n"
+                      "使用耳机时可开启连续收麦克风；扬声器模式播放译音会暂避回授。\n\n"
                       "播放设备选择不会创建 Windows 虚拟扬声器；下面的音量只影响本地译音。")
         hint.setWordWrap(True)
         playback_form.addRow(hint)
@@ -301,6 +302,25 @@ class Window(QMainWindow):
         self.speed.addItem("快速 · 减少模型搜索，可能降低准确率", "fast")
         self.speed.setCurrentIndex(self.speed.findData(self.settings.speed_mode))
         timing_form.addRow("计算模式", self.speed)
+        self.streaming = QCheckBox('提前解码 · 边说边预览，确认后才播放')
+        self.streaming.setChecked(self.settings.streaming_enabled)
+        self.preview_interval = QSpinBox()
+        self.preview_interval.setRange(400, 2000)
+        self.preview_interval.setSingleStep(100)
+        self.preview_interval.setSuffix(' ms')
+        self.preview_interval.setValue(self.settings.preview_interval_ms)
+        self.glossary = QCheckBox('游戏短句词库 · 倒地 / 换弹 / 报点')
+        self.glossary.setChecked(self.settings.game_glossary)
+        self.chinese_asr = QComboBox()
+        self.chinese_asr.addItem('自动 · 已知中文报点快识别，其他句子用 Whisper', 'auto')
+        self.chinese_asr.addItem('Zipformer · 极速中文（准确率因语音而异）', 'zipformer')
+        self.chinese_asr.addItem('Whisper · 通用识别', 'whisper')
+        self.chinese_asr.setCurrentIndex(self.chinese_asr.findData(self.settings.chinese_asr))
+        timing_form.addRow(self.chinese_asr)
+        self.headphones = QCheckBox('我使用耳机 · 本地译音播放时继续收麦克风')
+        self.headphones.setChecked(self.settings.headphones_mode)
+        for widget in (self.streaming, self.preview_interval, self.glossary, self.headphones):
+            timing_form.addRow(widget)
         self.asr_threads = QSpinBox()
         self.asr_threads.setRange(1, 16)
         self.asr_threads.setValue(self.settings.asr_threads)
@@ -562,6 +582,43 @@ class Window(QMainWindow):
         self.incoming_segment.setValue(2 if mode == "fast" else 3)
         self.asr_threads.setValue(min(8, max(1, (os.cpu_count() or 4) // 2)) if mode == "fast" else 4)
 
+    def set_callout_timing(self):
+        # Keep balanced decoding search; this preset changes scheduling, not beam quality.
+        self.set_timing('balanced', 180, 2)
+        self.incoming_silence.setValue(160)
+        self.incoming_segment.setValue(1.6)
+        self.preview_interval.setValue(700)
+        self.streaming.setChecked(True)
+        self.glossary.setChecked(True)
+        self.asr_threads.setValue(min(8, max(2, (os.cpu_count() or 4) // 2)))
+
+    def update_bilingual(self, enabled):
+        self.settings.subtitle_original = enabled
+        self.settings.save()
+        if hasattr(self, 'bilingual'):
+            self.bilingual.setChecked(enabled)
+            self.translation_preview.set_bilingual(enabled)
+
+    def show_preview_translation(self, direction, original, translated):
+        if self.service is None or self.stop_requested:
+            return
+        self.translation_preview.display(direction, original, translated, 0, preview=True)
+        if direction == 'in':
+            self.overlay.display(original, '预览 · ' + translated)
+
+    def show_subtitle(self, original, translated):
+        if self.service is not None and not self.stop_requested:
+            self.overlay.display(original, translated)
+
+    def show_metrics(self, metric):
+        if metric['direction'] == 'out_voice':
+            self.voice_metrics.setText(f"我方译音：合成/变声 {metric['tts_ms']:.0f} ms · 播报排队 {metric['voice_queue_ms']:.0f} ms")
+            return
+        name = '队友' if metric['direction'] == 'in' else '我方'
+        suffix = ' · 复用提前解码' if metric['reused_preview'] else ''
+        self.latency_metrics.setText(f"{name}最近一句：排队 {metric['queue_ms']:.0f} ms · 识别 {metric['asr_ms']:.0f} ms · "
+            f"翻译 {metric['mt_ms']:.0f} ms · 提交到译文 {metric['final_to_text_ms']:.0f} ms{suffix}")
+
     def update_volume(self):
         self.settings.incoming_volume = self.incoming_volume.value()
         self.settings.outgoing_volume = self.outgoing_volume.value()
@@ -668,6 +725,11 @@ class Window(QMainWindow):
             self.status.setText(f"读取音频设备失败：{exc}")
 
     def save(self):
+        self.settings.streaming_enabled = self.streaming.isChecked()
+        self.settings.preview_interval_ms = self.preview_interval.value()
+        self.settings.game_glossary = self.glossary.isChecked()
+        self.settings.headphones_mode = self.headphones.isChecked()
+        self.settings.chinese_asr = self.chinese_asr.currentData()
         self.settings.target_language = self.target_language.currentData()
         self.settings.incoming_language = self.incoming_language.currentData()
         self.settings.speech_filter = self.speech_filter.currentData()
@@ -731,7 +793,9 @@ class Window(QMainWindow):
         self.ptt_gate.reset()
         self.service = Service(self.settings, target)
         self.service.events.status.connect(self.status.setText)
-        self.service.events.subtitle.connect(self.overlay.display)
+        self.service.events.subtitle.connect(self.show_subtitle)
+        self.service.events.preview.connect(self.show_preview_translation)
+        self.service.events.metrics.connect(self.show_metrics)
         self.service.events.transcript.connect(self.record)
         self.service.events.finished.connect(self.finished)
         self.service.events.active.connect(self.audio_active)

@@ -9,7 +9,7 @@ from scipy.signal import resample_poly
 import webrtcvad
 
 from .voice import VoiceProcessor
-from .segmenter import Segmenter
+from .segmenter import make_segmenter
 from .hotkey import chord_text
 
 
@@ -72,7 +72,7 @@ class MicrophoneTranslationFeed:
     def __init__(self, destination, settings, report):
         self.destination, self.report = destination, report
         self.vad = webrtcvad.Vad(settings.vad_aggressiveness)
-        self.segmenter = Segmenter(settings.silence_ms, settings.max_speech_seconds)
+        self.segmenter = make_segmenter(settings, destination)
         self.pending = b""
 
     def push(self, samples, rate, enabled):
@@ -147,6 +147,9 @@ class RealtimeVoice(threading.Thread):
                     processor = VoiceProcessor(48000)
                     if feed is not None:
                         feed = MicrophoneTranslationFeed(self.translation_destination, self.settings, self.report)
+                        invalidate = getattr(self.translation_destination, 'invalidate_preview', None)
+                        if invalidate:
+                            invalidate()
                     self.report("实时音频处理拥堵，已跳过积压音频")
                     continue
                 samples = np.frombuffer(data, np.int16).astype(np.float32).reshape(-1, channels).mean(axis=1) / 32768

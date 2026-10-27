@@ -6,6 +6,16 @@ from speak_sound.config import Settings
 
 
 class ConfigTests(unittest.TestCase):
+    def test_streaming_interval_backend_and_bilingual_roundtrip(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/'config.json'
+            settings = Settings(preview_interval_ms=1, chinese_asr='wrong', subtitle_original=True,
+                                headphones_mode=True, streaming_enabled=False)
+            settings.save(path)
+            self.assertEqual(Settings.load(path), settings)
+            self.assertEqual(settings.preview_interval_ms, 400)
+            self.assertEqual(settings.chinese_asr, 'auto')
+
     def test_independent_translation_mode_roundtrips_without_erasing_effect_preferences(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'config.json'

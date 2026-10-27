@@ -5,7 +5,7 @@ from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (QWidget, QFrame, QLabel, QPushButton, QVBoxLayout,
     QHBoxLayout, QGridLayout, QScrollArea, QTabWidget, QButtonGroup, QSizePolicy,
-    QComboBox)
+    QComboBox, QCheckBox)
 
 from . import __version__
 from .subtitles import subtitle_pages
@@ -141,30 +141,52 @@ class TranslationPreview(QFrame):
         header = QHBoxLayout()
         self.direction = text('最新译文', 'section')
         self.elapsed = text('尚未开始', 'muted')
+        self.header = header
         header.addWidget(self.direction)
         header.addStretch()
         header.addWidget(self.elapsed)
         layout.addLayout(header)
+        pair = QHBoxLayout()
+        self.original_column, source_layout = column(gap=5)
+        source_layout.addWidget(text('原文', 'label'))
+        self.original = text('等待语音', 'section')
+        source_layout.addWidget(self.original)
+        target_column, target_layout = column(gap=5)
+        target_layout.addWidget(text('译文', 'label'))
         self.translated = text('等待语音', 'translation')
         self.translated.setMinimumHeight(28)
-        layout.addWidget(self.translated)
-        self.original = text('开始翻译后，这里会显示最新一句译文。', 'muted')
-        layout.addWidget(self.original)
+        target_layout.addWidget(self.translated)
+        pair.addWidget(self.original_column, 1)
+        pair.addWidget(target_column, 1)
+        layout.addLayout(pair)
         self.target = ''
+        self.source = ''
+        self.bilingual = False
+        self.set_bilingual(False)
 
-    def display(self, direction, original, translated, elapsed):
+    def set_bilingual(self, enabled):
+        self.bilingual = enabled
+        self.original_column.setVisible(enabled)
+        self.render_text()
+
+    def display(self, direction, original, translated, elapsed, preview=False):
         self.direction.setText('队友 → 你' if direction == 'in' else '你 → 队友')
-        self.elapsed.setText(f'识别与翻译 {elapsed:.1f} 秒')
-        self.original.setText(self.original.fontMetrics().elidedText(
-            ' '.join(original.split()), Qt.TextElideMode.ElideRight, max(80, self.width() - 40)))
+        self.elapsed.setText('预览，待确认' if preview else f'识别与翻译 {elapsed:.1f} 秒')
+        self.source = original
+        self.original.setToolTip(original)
         self.target = translated
+        self.translated.setToolTip(translated)
         self.render_text()
 
     def render_text(self):
         if self.target:
+            width = max(80, (self.width() - 54) // 2 if self.bilingual else self.width() - 40)
             pages = subtitle_pages(self.target, self.translated.fontMetrics().horizontalAdvance,
-                                   max(80, self.width() - 40), lines=2, max_pages=1)
+                                   width, lines=2, max_pages=1)
             self.translated.setText(pages[0] if pages else '')
+            pages = subtitle_pages(self.source, self.original.fontMetrics().horizontalAdvance,
+                                   width, lines=2, max_pages=1)
+            self.original.setText(pages[0] if pages else '')
 
     def resizeEvent(self, event):
         self.render_text()
@@ -310,6 +332,12 @@ def assemble_window(w):
     mute_row.addStretch()
     volumes.addLayout(mute_row)
     w.translation_preview = TranslationPreview()
+    w.bilingual = QCheckBox('双语对照')
+    w.bilingual.setChecked(w.settings.subtitle_original)
+    w.bilingual.toggled.connect(w.subtitle_original.setChecked)
+    w.subtitle_original.toggled.connect(w.bilingual.setChecked)
+    w.translation_preview.set_bilingual(w.settings.subtitle_original)
+    w.translation_preview.header.addWidget(w.bilingual)
     w.home = Workbench(sending, receiving, w.translation_preview)
     w.home_config = [sending, receiving]
 
@@ -338,6 +366,7 @@ def assemble_window(w):
     local.addWidget(field('本地播放设备', w.listen))
     local.addWidget(w.incoming_voice)
     local.addWidget(w.outgoing_monitor)
+    local.addWidget(w.headphones)
     local.addWidget(text('设备回环在译音播放时暂停接收以防回授；指定进程接收可继续运行。建议使用耳机。', 'muted'))
     playback.addWidget(w.playback_controls)
     w.subtitle_controls, subtitles = panel('屏幕底部字幕', '透明背景，最多两行；完整原文与译文保留在翻译记录中。')
@@ -365,6 +394,11 @@ def assemble_window(w):
 
     timing_page, timing = page()
     w.timing_controls, tuning = panel('识别与分句', '更短的分段更早提交，也会减少上下文；模型计算和排队仍会产生延迟。')
+    tuning.addWidget(w.streaming)
+    tuning.addWidget(field('连续讲话预览间隔（短暂停顿另行触发）', w.preview_interval))
+    tuning.addWidget(w.glossary)
+    tuning.addWidget(text('中文短报点在 60 ms 停顿时提前尝试；日英只在稳定静音后尝试，避免重复识别拖慢确认。', 'muted'))
+    tuning.addWidget(field('中文识别器（日语 / 英语仍使用 Whisper）', w.chinese_asr))
     for left, right in ((('计算模式', w.speed), ('识别 CPU 线程数', w.asr_threads)),
                         (('我的停顿等待', w.silence), ('我的最长分段', w.segment)),
                         (('队友停顿等待', w.incoming_silence), ('队友最长分段', w.incoming_segment))):
@@ -373,6 +407,9 @@ def assemble_window(w):
         row.addWidget(field(*right))
         tuning.addLayout(row)
     presets = QHBoxLayout()
+    callouts = QPushButton('应用快速报点预设')
+    callouts.clicked.connect(w.set_callout_timing)
+    presets.addWidget(callouts)
     fast = QPushButton('应用低延迟预设')
     fast.clicked.connect(lambda: w.set_timing('fast', 200, 3))
     balanced = QPushButton('应用均衡预设')
@@ -380,9 +417,16 @@ def assemble_window(w):
     presets.addWidget(fast)
     presets.addWidget(balanced)
     presets.addStretch()
-    tuning.addLayout(presets)
+    tuning.insertLayout(2, presets)
     tuning.addWidget(text('这些设置停止后生效。处理耗时只统计识别与翻译，不代表完整语音延迟。', 'muted'))
     timing.addWidget(w.timing_controls)
+    metric_panel, metric_layout = panel('最近一句的处理耗时')
+    w.latency_metrics = text('尚未开始 · 不显示估算性能', 'muted')
+    w.voice_metrics = text('我方译音：等待发送', 'muted')
+    metric_layout.addWidget(w.latency_metrics)
+    metric_layout.addWidget(w.voice_metrics)
+    metric_layout.addWidget(text('不包含硬件采集与网络延迟。提前解码结果可修改，只有确认语句才进入记录和播报。', 'muted'))
+    timing.addWidget(metric_panel)
 
     w.history.setPlaceholderText('还没有翻译记录。\n开始翻译后，原文、译文和处理耗时会出现在这里。')
     w.history.setObjectName('history')
@@ -431,11 +475,12 @@ def assemble_window(w):
     focus_order = [w.start_button, w.stop_button, w.operating_mode, w.target_language, w.mic,
         w.output, w.send_virtual, w.ptt, w.ptt_key, w.incoming_language, w.receive_mode, w.receive,
         w.process, w.process_refresh, w.receive_only, w.incoming_volume, w.outgoing_volume,
-        w.send_volume, w.mute, w.send_mute, *w.nav_buttons, w.virtual_button, w.refresh,
-        w.speech_filter, w.listen, w.incoming_voice, w.outgoing_monitor, w.screen,
+        w.send_volume, w.mute, w.send_mute, w.bilingual, *w.nav_buttons, w.virtual_button, w.refresh,
+        w.speech_filter, w.listen, w.incoming_voice, w.outgoing_monitor, w.headphones, w.screen,
         w.font_size, w.margin, w.subtitle_original, w.preview, w.voice_enable,
         w.voice_preset, w.voice_pitch, w.voice_effect, w.monitor_live_voice,
-        w.speed, w.asr_threads, w.silence, w.segment, w.incoming_silence, w.incoming_segment]
+        w.streaming, w.preview_interval, w.glossary, w.chinese_asr, w.speed, w.asr_threads,
+        w.silence, w.segment, w.incoming_silence, w.incoming_segment]
     for first, following in zip(focus_order, focus_order[1:]):
         QWidget.setTabOrder(first, following)
     old_root.deleteLater()

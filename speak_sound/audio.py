@@ -7,7 +7,7 @@ import pyaudiowpatch as pa
 from scipy.signal import resample_poly
 import webrtcvad
 
-from .segmenter import Segmenter
+from .segmenter import make_segmenter
 
 
 def device_key(p, device):
@@ -49,7 +49,7 @@ class Capture(threading.Thread):
         super().__init__(name=f'capture-{info["index"]}', daemon=True)
         self.p, self.info, self.destination = p, info, destination
         self.stop, self.enabled, self.settings, self.report = stop, enabled, settings, report
-        self.raw = queue.Queue(maxsize=25)
+        self.raw = queue.Queue(maxsize=8)
         self.dropped = threading.Event()
 
     def callback(self, data, frame_count, time_info, status):
@@ -65,7 +65,7 @@ class Capture(threading.Thread):
             rate = int(self.info["defaultSampleRate"])
             channels = min(2, int(self.info["maxInputChannels"]))
             vad = webrtcvad.Vad(self.settings.vad_aggressiveness)
-            segmenter = Segmenter(self.settings.silence_ms, self.settings.max_speech_seconds)
+            segmenter = make_segmenter(self.settings, self.destination)
             stream = self.p.open(format=pa.paInt16, channels=channels, rate=rate,
                                  input=True, input_device_index=int(self.info["index"]),
                                  frames_per_buffer=round(rate * .02), stream_callback=self.callback)
@@ -79,7 +79,10 @@ class Capture(threading.Thread):
                     continue
                 if self.dropped.is_set():
                     self.dropped.clear()
-                    segmenter = Segmenter(self.settings.silence_ms, self.settings.max_speech_seconds)
+                    segmenter = make_segmenter(self.settings, self.destination)
+                    invalidate = getattr(self.destination, 'invalidate_preview', None)
+                    if invalidate:
+                        invalidate()
                     pending = b""
                     self.report("音频采集拥堵，已丢弃不完整语句")
                     while self.raw.qsize() > 1:

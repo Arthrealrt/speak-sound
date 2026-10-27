@@ -24,6 +24,11 @@ class Settings:
     asr_threads: int = 4
     push_to_talk: bool = True
     ptt_keys: tuple = (0x77,)
+    streaming_enabled: bool = True
+    preview_interval_ms: int = 900
+    game_glossary: bool = True
+    headphones_mode: bool = False
+    chinese_asr: str = 'auto'
     screen: int = 0
     font_size: int = 28
     bottom_margin: int = 36
@@ -47,6 +52,9 @@ class Settings:
 
     def __post_init__(self):
         self.ptt_keys = normalize_chord(self.ptt_keys)
+        self.preview_interval_ms = max(400, min(2000, int(self.preview_interval_ms)))
+        if self.chinese_asr not in ('auto', 'whisper', 'zipformer'):
+            self.chinese_asr = 'auto'
         for field in ("target_language", "incoming_language"):
             if getattr(self, field) not in ("ja", "en"):
                 setattr(self, field, "ja")

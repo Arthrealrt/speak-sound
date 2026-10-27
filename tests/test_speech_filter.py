@@ -29,7 +29,9 @@ class SpeechFilterTests(unittest.TestCase):
     def model(self, mode='standard'):
         m = LocalModels.__new__(LocalModels)
         m.settings = Settings(speech_filter=mode)
-        m.asr_lock = threading.Lock()
+        m.zh_asr = None
+        from speak_sound.streaming import PriorityLock
+        m.asr_lock = PriorityLock()
         m.speech_filter = Mock()
         m.asr = Mock()
         return m

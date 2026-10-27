@@ -14,12 +14,15 @@ from .process_audio import ProcessCapture
 from .realtime import RealtimeVoice
 from .voice import process_utterance
 from .queues import LatestQueue
+from .streaming import SpeechQueue, ResultCache, PreviewBusy
 
 
 class Events(QObject):
     status = Signal(str)
     subtitle = Signal(str, str)
     transcript = Signal(str, str, str, float)
+    preview = Signal(str, str, str)
+    metrics = Signal(object)
     active = Signal(bool)
     finished = Signal()
 
@@ -76,8 +79,14 @@ class Service:
                     return (self.settings.incoming_volume if direction == "in" else self.settings.outgoing_volume) / 100
                 if self.settings.speak_incoming or (not self.settings.receive_only and self.settings.monitor_outgoing):
                     local = LocalPlayback(p, listen, self.stop, self.feedback, play, self.events.status.emit, volume)
-            incoming, outgoing = LatestQueue(maxsize=1), queue.Queue(maxsize=2)
+            # Re-running Whisper on every short prefix adds contention. Preserve
+            # 60 ms pause previews, but space continuous Whisper work by >=1.8 s.
+            incoming = SpeechQueue(maxsize=1, min_preview_ms=1800, zero_tail_only=True)
+            outgoing = SpeechQueue(maxsize=2, latest=False,
+                                   min_preview_ms=0 if models.zh_asr is not None else 1800,
+                                   zero_tail_only=models.zh_asr is None)
             incoming_speech = LatestQueue(maxsize=1)
+            outgoing_speech = queue.Queue(maxsize=2)
             receiving_settings = replace(self.settings, silence_ms=self.settings.incoming_silence_ms,
                                          max_speech_seconds=self.settings.incoming_max_seconds)
             if self.settings.receive_mode == "process":
@@ -89,29 +98,52 @@ class Service:
                     captures.append(RealtimeVoice(p, mic, output,
                         listen if self.settings.monitor_live_voice else None,
                         self.settings, self.stop, self.talking, self.events.status.emit,
-                        translation_destination=outgoing, capture_enabled=lambda: not self.feedback.paused()))
+                        translation_destination=outgoing, capture_enabled=lambda: self.settings.headphones_mode or not self.feedback.paused()))
                 else:
                     captures.append(Capture(p, mic, outgoing, self.stop,
-                        lambda: not self.sending.is_set() and not self.feedback.paused()
+                        lambda: (self.settings.headphones_mode or not self.feedback.paused())
                                 and (not self.settings.push_to_talk or self.talking.is_set()),
                         self.settings, self.events.status.emit))
 
             def worker(q, direction):
+                cache = ResultCache()
                 while not self.stop.is_set():
                     try:
-                        pcm = q.get(timeout=.1)
+                        packet = q.get(timeout=.1)
                     except queue.Empty:
                         continue
                     try:
                         started = time.monotonic()
-                        original = models.recognize(pcm, self.settings.incoming_language if direction == "in" else "zh")
+                        source = self.settings.incoming_language if direction == 'in' else 'zh'
+                        target = 'zh' if direction == 'in' else self.settings.target_language
+                        cached = cache.get(packet.pcm)
+                        asr_ms = mt_ms = 0.
+                        if cached:
+                            original, translated = cached
+                        else:
+                            kwargs = {} if packet.final else {'preview': True}
+                            original = models.recognize(packet.pcm, source, **kwargs)
+                            recognized_at = time.monotonic()
+                            if not original or self.stop.is_set():
+                                continue
+                            translated = models.translate(original, source, target, **kwargs)
+                            translated_at = time.monotonic()
+                            asr_ms, mt_ms = (recognized_at - started) * 1000, (translated_at - recognized_at) * 1000
+                            if original and translated:
+                                cache.put(packet.pcm, (original, translated))
                         if not original or self.stop.is_set():
                             continue
-                        translated = models.translate(original,
-                            self.settings.incoming_language if direction == "in" else "zh",
-                            "zh" if direction == "in" else self.settings.target_language)
                         if self.stop.is_set() or not translated:
                             continue
+                        if not packet.final:
+                            if q.current(packet):
+                                self.events.preview.emit(direction, original, translated)
+                            continue  # Speculation is never spoken or written to history.
+                        metrics = dict(direction=direction, queue_ms=max(0, (started - packet.created) * 1000),
+                            asr_ms=asr_ms, mt_ms=mt_ms, reused_preview=bool(cached),
+                            final_to_text_ms=(time.monotonic() - packet.created) * 1000,
+                            estimated_end_to_text_ms=(time.monotonic() - packet.speech_end) * 1000 if packet.speech_end else None)
+                        self.events.metrics.emit(metrics)
                         self.events.transcript.emit(direction, original, translated, time.monotonic() - started)
                         if direction == "in":
                             self.events.subtitle.emit(original, translated)
@@ -120,21 +152,40 @@ class Service:
                         else:
                             if live and not self.settings.monitor_outgoing:
                                 continue  # Translation text still appears; the virtual mic carries live original speech.
-                            self.sending.set()
                             try:
-                                samples, rate = models.synthesize(translated, self.settings.target_language)
-                                if not translation_only:
-                                    samples = process_utterance(samples, rate, self.settings)
-                                if not self.stop.is_set():
-                                    if self.settings.monitor_outgoing:
-                                        local.submit(samples, rate, "out")
-                                    if self.settings.send_to_virtual and not live:
-                                        play(p, output, samples, rate, self.stop,
-                                             volume=lambda: 0 if self.settings.send_muted else self.settings.send_volume / 100)
-                            finally:
-                                self.sending.clear()
+                                outgoing_speech.put_nowait((translated, time.monotonic()))
+                            except queue.Full:
+                                self.events.status.emit('我方译音发送积压，已跳过一句播报；译文仍保留。请缩短报点。')
+                    except PreviewBusy:
+                        continue  # Finals take priority; the next preview replaces this one.
                     except Exception as exc:
                         self.events.status.emit(f"处理失败：{exc}")
+
+            def speak_outgoing():
+                while not self.stop.is_set():
+                    try:
+                        translated, queued_at = outgoing_speech.get(timeout=.1)
+                    except queue.Empty:
+                        continue
+                    # Drop stale voice callouts instead of saying an obsolete position.
+                    if time.monotonic() - queued_at > 3:
+                        self.events.status.emit('我方译音等待超过 3 秒，已跳过过时播报；译文仍保留。')
+                        continue
+                    try:
+                        begin = time.monotonic()
+                        samples, rate = models.synthesize(translated, self.settings.target_language)
+                        if not translation_only:
+                            samples = process_utterance(samples, rate, self.settings)
+                        self.events.metrics.emit(dict(direction='out_voice', tts_ms=(time.monotonic()-begin)*1000,
+                            voice_queue_ms=(begin-queued_at)*1000))
+                        if not self.stop.is_set():
+                            if self.settings.monitor_outgoing:
+                                local.submit(samples, rate, 'out')
+                            if self.settings.send_to_virtual and not live:
+                                play(p, output, samples, rate, self.stop,
+                                    volume=lambda: 0 if self.settings.send_muted else self.settings.send_volume / 100)
+                    except Exception as exc:
+                        self.events.status.emit(f'我方译音播放失败：{exc}')
 
             def speak_received():
                 while not self.stop.is_set():
@@ -156,6 +207,7 @@ class Service:
                 children.append(threading.Thread(target=speak_received, name="incoming-tts", daemon=True))
             if not self.settings.receive_only:
                 children.append(threading.Thread(target=worker, args=(outgoing, "out"), daemon=True))
+                children.append(threading.Thread(target=speak_outgoing, name='outgoing-tts', daemon=True))
             if local is not None:
                 children.insert(0, local)
             for child in children:

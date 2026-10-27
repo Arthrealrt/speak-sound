@@ -30,7 +30,7 @@ def contrast(first, second):
 
 
 def main():
-    output = ROOT / 'work/ui-v10'
+    output = ROOT / 'work/ui-v11'
     output.mkdir(parents=True, exist_ok=True)
     app = create_application([])
     reports, snapshots = [], []
@@ -78,6 +78,26 @@ def main():
                 filename = name + '-1180.png'
                 assert window.grab().save(str(output / filename))
                 snapshots.append(filename)
+            window.tabs.setCurrentIndex(0)
+            window.bilingual.setChecked(True)
+            report_path = ROOT / 'work/v11-preset-models.json'
+            if report_path.exists():
+                fixture = json.loads(report_path.read_text(encoding='utf-8'))['models'][4]['runs'][0]
+                window.record('in', fixture['recognized'], fixture['translated'],
+                              (fixture['asr_ms'] + fixture['mt_ms']) / 1000)
+                window.translation_preview.direction.setText('双语对照 · 本地合成样例')
+                app.processEvents()
+                window.tabs.widget(0).ensureWidgetVisible(window.translation_preview)
+                app.processEvents()
+                assert window.translation_preview.original_column.isVisible()
+                window.grab().save(str(output / 'bilingual.png'))
+                window.overlay.display(fixture['recognized'], fixture['translated'])
+                assert len(window.overlay.label.text().splitlines()) == 2
+                overlay = window.overlay.grab().toImage()
+                assert overlay.pixelColor(0, 0).alpha() == 0
+                window.overlay.grab().save(str(output / 'bilingual-subtitle.png'))
+                window.overlay.hide()
+                snapshots.extend(['bilingual.png', 'bilingual-subtitle.png'])
             colors = {f'{ink} on {surface}': contrast(ink, surface)
                       for ink in ('#ffffff', '#b4b4b4', '#949494')
                       for surface in ('#000000', '#111111', '#262626')}

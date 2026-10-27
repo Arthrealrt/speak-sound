@@ -4,6 +4,10 @@ import hashlib
 import os
 from pathlib import Path
 import time
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from speak_sound.chinese_asr import ZH_ASR_REPO, ZH_ASR_REVISION, ZH_ASR_SHA256
 
 os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
 os.environ.pop("HF_HUB_OFFLINE", None)
@@ -75,12 +79,25 @@ def download_english_tts():
     download_weights(ENGLISH_TTS_REPO, folder, revision=ENGLISH_TTS_REVISION, filename="model.onnx")
 
 
+def download_chinese_asr():
+    print('Downloading Apache-2.0 Chinese Zipformer recognition model…', flush=True)
+    folder = ROOT / 'models' / 'chinese-asr'
+    for filename in ('README.md', 'tokens.txt'):
+        download_weights(ZH_ASR_REPO, folder, revision=ZH_ASR_REVISION, filename=filename)
+    download_weights(ZH_ASR_REPO, folder, revision=ZH_ASR_REVISION,
+                     expected_hash=ZH_ASR_SHA256, filename='model.int8.onnx')
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--whisper", choices=["tiny", "base", "small", "medium", "large-v3-turbo"], default="small")
     parser.add_argument("--skip-tts", action="store_true", help="Download only ASR and translation files")
     parser.add_argument("--english-only", action="store_true", help="Add English TTS to an existing installation")
+    parser.add_argument('--chinese-asr-only', action='store_true', help='Add low latency Chinese ASR to an existing installation')
     args = parser.parse_args()
+    if args.chinese_asr_only:
+        download_chinese_asr()
+        return
     if args.english_only:
         download_english_tts()
         return
@@ -91,6 +108,7 @@ def main():
                       local_dir=ROOT / "models" / "whisper",
                       allow_patterns=["*.json", "vocabulary.*", "README.md", "LICENSE*"])
     download_weights(whisper_repo, ROOT / "models" / "whisper")
+    download_chinese_asr()
     print("Downloading MIT-licensed M2M100 translation model…", flush=True)
     snapshot_download("jncraton/m2m100_418M-ct2-int8",
                       revision="7c1b2620a4e58dacecbd8bf89cfd6da7eb9eb7b0",

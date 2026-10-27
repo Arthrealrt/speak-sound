@@ -24,7 +24,7 @@ from speak_sound.key_dialog import KeyDialog
 def main():
     if sys.platform != 'win32' or os.environ.get('QT_QPA_PLATFORM') != 'windows':
         raise RuntimeError('Requires Windows desktop and QT_QPA_PLATFORM=windows')
-    output = ROOT / 'work/ui-v10'
+    output = ROOT / 'work/ui-v11'
     output.mkdir(parents=True, exist_ok=True)
     app = create_application([])
     # Every pixel behind the tested app belongs to our synthetic background.

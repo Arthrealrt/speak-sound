@@ -15,6 +15,7 @@
 | psutil | BSD-3-Clause；[进程枚举与存活检测](https://github.com/giampaolo/psutil) |
 | Whisper 模型、faster-whisper、CTranslate2 | MIT；[Whisper](https://github.com/openai/whisper)、[faster-whisper](https://github.com/SYSTRAN/faster-whisper)、[CTranslate2](https://github.com/OpenNMT/CTranslate2) |
 | M2M100 原始权重与分词器 | MIT；[Meta 模型卡](https://huggingface.co/facebook/m2m100_418M) |
+| 中文 Zipformer CTC int8 权重 | Apache-2.0；[固定模型卡](https://huggingface.co/csukuangfj/sherpa-onnx-zipformer-ctc-zh-int8-2025-07-03/tree/824c678e9b80f301110e3ea8cee9819a7994c049)、[上游作者许可确认](https://github.com/k2-fsa/sherpa-onnx/issues/4065)；使用已安装的 sherpa-onnx / ONNX Runtime CPU 后端，不引入专有推理组件；[许可副本](licenses/Zipformer-Chinese-ASR-Apache-2.0.txt) |
 | M2M100 int8 权重 | MIT；[固定转换版本](https://huggingface.co/jncraton/m2m100_418M-ct2-int8/tree/7c1b2620a4e58dacecbd8bf89cfd6da7eb9eb7b0) |
 | RadioVoice 虚拟音频驱动 | GPL-3.0-or-later；[源码与许可](https://github.com/doctorspider42/radio-voice)。独立组件，未打包或安装 |
 | PySide6 / shiboken6 | LGPL-3.0 / GPL 许可选项；[Qt for Python](https://doc.qt.io/qtforpython-6/licenses.html)，使用动态安装包 |

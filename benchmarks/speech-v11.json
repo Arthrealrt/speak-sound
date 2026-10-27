@@ -1,0 +1,732 @@
+{
+  "scope": "Nine fixed synthetic utterances, two runs each. No live microphone, game audio, simultaneous speakers or game FPS measurements. Cache warm-up affects the second and repeated phrases; no aggregate accuracy or esports claim.",
+  "baseline_commit": "e4919249f043e51ae1e41bb68f9ee36199bad5f1",
+  "baseline_threads4": [
+    {
+      "id": 0,
+      "language": "zh",
+      "input": "敌人在右边。",
+      "seconds": 1.091375,
+      "runs": [
+        {
+          "recognized": "阴人在右边。",
+          "translated": "The man on the right side.",
+          "asr_ms": 1250,
+          "mt_ms": 147,
+          "tts_ms": 742,
+          "processing_ms": 2139
+        },
+        {
+          "recognized": "阴人在右边。",
+          "translated": "The man on the right side.",
+          "asr_ms": 1205,
+          "mt_ms": 145,
+          "tts_ms": 706,
+          "processing_ms": 2056
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "language": "zh",
+      "input": "我倒了，救我。",
+      "seconds": 1.258125,
+      "runs": [
+        {
+          "recognized": "我倒吧,用我。",
+          "translated": "I go down, use me.",
+          "asr_ms": 1058,
+          "mt_ms": 140,
+          "tts_ms": 514,
+          "processing_ms": 1712
+        },
+        {
+          "recognized": "我倒吧,用我。",
+          "translated": "I go down, use me.",
+          "asr_ms": 936,
+          "mt_ms": 133,
+          "tts_ms": 516,
+          "processing_ms": 1585
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "language": "zh",
+      "input": "没有敌人，别开枪。",
+      "seconds": 1.4976875,
+      "runs": [
+        {
+          "recognized": "没有敌人 别开车",
+          "translated": "No enemies do not drive.",
+          "asr_ms": 991,
+          "mt_ms": 150,
+          "tts_ms": 558,
+          "processing_ms": 1699
+        },
+        {
+          "recognized": "没有敌人 别开车",
+          "translated": "No enemies do not drive.",
+          "asr_ms": 1010,
+          "mt_ms": 152,
+          "tts_ms": 595,
+          "processing_ms": 1757
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "language": "ja",
+      "input": "敵が右にいる。",
+      "seconds": 1.57,
+      "runs": [
+        {
+          "recognized": "敵が右にいる",
+          "translated": "敌人在右边。",
+          "asr_ms": 907,
+          "mt_ms": 133,
+          "tts_ms": 318,
+          "processing_ms": 1358
+        },
+        {
+          "recognized": "敵が右にいる",
+          "translated": "敌人在右边。",
+          "asr_ms": 913,
+          "mt_ms": 131,
+          "tts_ms": 326,
+          "processing_ms": 1371
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "language": "ja",
+      "input": "リロード中。",
+      "seconds": 1.24,
+      "runs": [
+        {
+          "recognized": "リロード中",
+          "translated": "在里洛德",
+          "asr_ms": 920,
+          "mt_ms": 118,
+          "tts_ms": 285,
+          "processing_ms": 1323
+        },
+        {
+          "recognized": "リロード中",
+          "translated": "在里洛德",
+          "asr_ms": 907,
+          "mt_ms": 108,
+          "tts_ms": 278,
+          "processing_ms": 1293
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "language": "ja",
+      "input": "敵はいない。撃たないで。",
+      "seconds": 2.325,
+      "runs": [
+        {
+          "recognized": "敵はいない、撃たないで",
+          "translated": "没有敌人,不要开枪。",
+          "asr_ms": 979,
+          "mt_ms": 165,
+          "tts_ms": 521,
+          "processing_ms": 1665
+        },
+        {
+          "recognized": "敵はいない、撃たないで",
+          "translated": "没有敌人,不要开枪。",
+          "asr_ms": 957,
+          "mt_ms": 165,
+          "tts_ms": 523,
+          "processing_ms": 1646
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "language": "en",
+      "input": "Enemy on the right.",
+      "seconds": 1.1645625,
+      "runs": [
+        {
+          "recognized": "Enemy on the right.",
+          "translated": "右边的敌人。",
+          "asr_ms": 940,
+          "mt_ms": 141,
+          "tts_ms": 328,
+          "processing_ms": 1408
+        },
+        {
+          "recognized": "Enemy on the right.",
+          "translated": "右边的敌人。",
+          "asr_ms": 1065,
+          "mt_ms": 148,
+          "tts_ms": 429,
+          "processing_ms": 1643
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "language": "en",
+      "input": "I'm down. Help me.",
+      "seconds": 1.499125,
+      "runs": [
+        {
+          "recognized": "I'm down. Help me.",
+          "translated": "我下去了,帮我。",
+          "asr_ms": 1005,
+          "mt_ms": 139,
+          "tts_ms": 440,
+          "processing_ms": 1585
+        },
+        {
+          "recognized": "I'm down. Help me.",
+          "translated": "我下去了,帮我。",
+          "asr_ms": 933,
+          "mt_ms": 141,
+          "tts_ms": 458,
+          "processing_ms": 1532
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "language": "en",
+      "input": "No enemies. Don't shoot.",
+      "seconds": 1.930625,
+      "runs": [
+        {
+          "recognized": "No enemies, don't shoot.",
+          "translated": "没有敌人,不要开枪。",
+          "asr_ms": 1143,
+          "mt_ms": 177,
+          "tts_ms": 718,
+          "processing_ms": 2037
+        },
+        {
+          "recognized": "No enemies, don't shoot.",
+          "translated": "没有敌人,不要开枪。",
+          "asr_ms": 1180,
+          "mt_ms": 201,
+          "tts_ms": 633,
+          "processing_ms": 2014
+        }
+      ]
+    }
+  ],
+  "updated_threads4": [
+    {
+      "id": 0,
+      "language": "zh",
+      "input": "敌人在右边。",
+      "runs": [
+        {
+          "recognized": "阴人在右边。",
+          "translated": "The man on the right side.",
+          "asr_ms": 1320,
+          "mt_ms": 148,
+          "tts_ms": 772,
+          "processing_ms": 2240
+        },
+        {
+          "recognized": "阴人在右边。",
+          "translated": "The man on the right side.",
+          "asr_ms": 1262,
+          "mt_ms": 0,
+          "tts_ms": 0,
+          "processing_ms": 1262
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "language": "zh",
+      "input": "我倒了，救我。",
+      "runs": [
+        {
+          "recognized": "我倒吧,用我。",
+          "translated": "I go down, use me.",
+          "asr_ms": 1259,
+          "mt_ms": 150,
+          "tts_ms": 854,
+          "processing_ms": 2263
+        },
+        {
+          "recognized": "我倒吧,用我。",
+          "translated": "I go down, use me.",
+          "asr_ms": 1225,
+          "mt_ms": 0,
+          "tts_ms": 0,
+          "processing_ms": 1225
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "language": "zh",
+      "input": "没有敌人，别开枪。",
+      "runs": [
+        {
+          "recognized": "没有敌人别开枪",
+          "translated": "No enemies. Don't shoot.",
+          "asr_ms": 56,
+          "mt_ms": 0,
+          "tts_ms": 934,
+          "processing_ms": 990
+        },
+        {
+          "recognized": "没有敌人别开枪",
+          "translated": "No enemies. Don't shoot.",
+          "asr_ms": 52,
+          "mt_ms": 0,
+          "tts_ms": 0,
+          "processing_ms": 52
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "language": "ja",
+      "input": "敵が右にいる。",
+      "runs": [
+        {
+          "recognized": "敵が右にいる",
+          "translated": "敌人在右边。",
+          "asr_ms": 1145,
+          "mt_ms": 0,
+          "tts_ms": 460,
+          "processing_ms": 1605
+        },
+        {
+          "recognized": "敵が右にいる",
+          "translated": "敌人在右边。",
+          "asr_ms": 1169,
+          "mt_ms": 0,
+          "tts_ms": 0,
+          "processing_ms": 1169
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "language": "ja",
+      "input": "リロード中。",
+      "runs": [
+        {
+          "recognized": "リロード中",
+          "translated": "正在换弹。",
+          "asr_ms": 1135,
+          "mt_ms": 0,
+          "tts_ms": 460,
+          "processing_ms": 1595
+        },
+        {
+          "recognized": "リロード中",
+          "translated": "正在换弹。",
+          "asr_ms": 1135,
+          "mt_ms": 0,
+          "tts_ms": 0,
+          "processing_ms": 1135
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "language": "ja",
+      "input": "敵はいない。撃たないで。",
+      "runs": [
+        {
+          "recognized": "敵はいない、撃たないで",
+          "translated": "没有敌人。别开枪。",
+          "asr_ms": 1200,
+          "mt_ms": 0,
+          "tts_ms": 748,
+          "processing_ms": 1948
+        },
+        {
+          "recognized": "敵はいない、撃たないで",
+          "translated": "没有敌人。别开枪。",
+          "asr_ms": 1200,
+          "mt_ms": 0,
+          "tts_ms": 0,
+          "processing_ms": 1200
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "language": "en",
+      "input": "Enemy on the right.",
+      "runs": [
+        {
+          "recognized": "Enemy on the right.",
+          "translated": "敌人在右边。",
+          "asr_ms": 1139,
+          "mt_ms": 0,
+          "tts_ms": 0,
+          "processing_ms": 1139
+        },
+        {
+          "recognized": "Enemy on the right.",
+          "translated": "敌人在右边。",
+          "asr_ms": 1133,
+          "mt_ms": 0,
+          "tts_ms": 0,
+          "processing_ms": 1133
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "language": "en",
+      "input": "I'm down. Help me.",
+      "runs": [
+        {
+          "recognized": "I'm down. Help me.",
+          "translated": "我倒了。救我。",
+          "asr_ms": 1194,
+          "mt_ms": 0,
+          "tts_ms": 622,
+          "processing_ms": 1816
+        },
+        {
+          "recognized": "I'm down. Help me.",
+          "translated": "我倒了。救我。",
+          "asr_ms": 1175,
+          "mt_ms": 0,
+          "tts_ms": 0,
+          "processing_ms": 1175
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "language": "en",
+      "input": "No enemies. Don't shoot.",
+      "runs": [
+        {
+          "recognized": "No enemies, don't shoot.",
+          "translated": "没有敌人。别开枪。",
+          "asr_ms": 1179,
+          "mt_ms": 0,
+          "tts_ms": 0,
+          "processing_ms": 1179
+        },
+        {
+          "recognized": "No enemies, don't shoot.",
+          "translated": "没有敌人。别开枪。",
+          "asr_ms": 1175,
+          "mt_ms": 0,
+          "tts_ms": 0,
+          "processing_ms": 1175
+        }
+      ]
+    }
+  ],
+  "callout_preset_threads8": [
+    {
+      "id": 0,
+      "language": "zh",
+      "input": "敌人在右边。",
+      "runs": [
+        {
+          "recognized": "阴人在右边。",
+          "translated": "The man on the right side.",
+          "asr_ms": 977,
+          "mt_ms": 142,
+          "tts_ms": 797,
+          "processing_ms": 1916
+        },
+        {
+          "recognized": "阴人在右边。",
+          "translated": "The man on the right side.",
+          "asr_ms": 938,
+          "mt_ms": 0,
+          "tts_ms": 0,
+          "processing_ms": 938
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "language": "zh",
+      "input": "我倒了，救我。",
+      "runs": [
+        {
+          "recognized": "我倒吧,用我。",
+          "translated": "I go down, use me.",
+          "asr_ms": 871,
+          "mt_ms": 142,
+          "tts_ms": 811,
+          "processing_ms": 1823
+        },
+        {
+          "recognized": "我倒吧,用我。",
+          "translated": "I go down, use me.",
+          "asr_ms": 899,
+          "mt_ms": 0,
+          "tts_ms": 0,
+          "processing_ms": 899
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "language": "zh",
+      "input": "没有敌人，别开枪。",
+      "runs": [
+        {
+          "recognized": "没有敌人别开枪",
+          "translated": "No enemies. Don't shoot.",
+          "asr_ms": 61,
+          "mt_ms": 0,
+          "tts_ms": 960,
+          "processing_ms": 1021
+        },
+        {
+          "recognized": "没有敌人别开枪",
+          "translated": "No enemies. Don't shoot.",
+          "asr_ms": 52,
+          "mt_ms": 0,
+          "tts_ms": 0,
+          "processing_ms": 52
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "language": "ja",
+      "input": "敵が右にいる。",
+      "runs": [
+        {
+          "recognized": "敵が右にいる",
+          "translated": "敌人在右边。",
+          "asr_ms": 813,
+          "mt_ms": 0,
+          "tts_ms": 339,
+          "processing_ms": 1152
+        },
+        {
+          "recognized": "敵が右にいる",
+          "translated": "敌人在右边。",
+          "asr_ms": 849,
+          "mt_ms": 0,
+          "tts_ms": 0,
+          "processing_ms": 849
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "language": "ja",
+      "input": "リロード中。",
+      "runs": [
+        {
+          "recognized": "リロード中",
+          "translated": "正在换弹。",
+          "asr_ms": 797,
+          "mt_ms": 0,
+          "tts_ms": 347,
+          "processing_ms": 1144
+        },
+        {
+          "recognized": "リロード中",
+          "translated": "正在换弹。",
+          "asr_ms": 827,
+          "mt_ms": 0,
+          "tts_ms": 0,
+          "processing_ms": 827
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "language": "ja",
+      "input": "敵はいない。撃たないで。",
+      "runs": [
+        {
+          "recognized": "敵はいない、撃たないで",
+          "translated": "没有敌人。别开枪。",
+          "asr_ms": 900,
+          "mt_ms": 0,
+          "tts_ms": 594,
+          "processing_ms": 1495
+        },
+        {
+          "recognized": "敵はいない、撃たないで",
+          "translated": "没有敌人。别开枪。",
+          "asr_ms": 857,
+          "mt_ms": 0,
+          "tts_ms": 0,
+          "processing_ms": 857
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "language": "en",
+      "input": "Enemy on the right.",
+      "runs": [
+        {
+          "recognized": "Enemy on the right.",
+          "translated": "敌人在右边。",
+          "asr_ms": 811,
+          "mt_ms": 0,
+          "tts_ms": 0,
+          "processing_ms": 811
+        },
+        {
+          "recognized": "Enemy on the right.",
+          "translated": "敌人在右边。",
+          "asr_ms": 828,
+          "mt_ms": 0,
+          "tts_ms": 0,
+          "processing_ms": 828
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "language": "en",
+      "input": "I'm down. Help me.",
+      "runs": [
+        {
+          "recognized": "I'm down. Help me.",
+          "translated": "我倒了。救我。",
+          "asr_ms": 837,
+          "mt_ms": 0,
+          "tts_ms": 652,
+          "processing_ms": 1489
+        },
+        {
+          "recognized": "I'm down. Help me.",
+          "translated": "我倒了。救我。",
+          "asr_ms": 803,
+          "mt_ms": 0,
+          "tts_ms": 0,
+          "processing_ms": 803
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "language": "en",
+      "input": "No enemies. Don't shoot.",
+      "runs": [
+        {
+          "recognized": "No enemies, don't shoot.",
+          "translated": "没有敌人。别开枪。",
+          "asr_ms": 815,
+          "mt_ms": 0,
+          "tts_ms": 0,
+          "processing_ms": 815
+        },
+        {
+          "recognized": "No enemies, don't shoot.",
+          "translated": "没有敌人。别开枪。",
+          "asr_ms": 842,
+          "mt_ms": 0,
+          "tts_ms": 0,
+          "processing_ms": 842
+        }
+      ]
+    }
+  ],
+  "final_replays_threads4": [
+    {
+      "language": "zh",
+      "streaming": false,
+      "recognized": "没有敌人别开枪",
+      "translated": "敵はいない。撃たないで。",
+      "reused_preview": false,
+      "end_to_text_ms": 234,
+      "submit_to_text_ms": 63
+    },
+    {
+      "language": "zh",
+      "streaming": true,
+      "recognized": "没有敌人别开枪",
+      "translated": "敵はいない。撃たないで。",
+      "reused_preview": true,
+      "end_to_text_ms": 156,
+      "submit_to_text_ms": 0
+    },
+    {
+      "language": "ja",
+      "streaming": false,
+      "recognized": "リロード中",
+      "translated": "正在换弹。",
+      "reused_preview": false,
+      "end_to_text_ms": 1390,
+      "submit_to_text_ms": 1234
+    },
+    {
+      "language": "ja",
+      "streaming": true,
+      "recognized": "リロード中",
+      "translated": "正在换弹。",
+      "reused_preview": false,
+      "end_to_text_ms": 1297,
+      "submit_to_text_ms": 1141
+    },
+    {
+      "language": "en",
+      "streaming": false,
+      "recognized": "I'm down. Help me.",
+      "translated": "我倒了。救我。",
+      "reused_preview": false,
+      "end_to_text_ms": 1359,
+      "submit_to_text_ms": 1203
+    },
+    {
+      "language": "en",
+      "streaming": true,
+      "recognized": "I'm down. Help me.",
+      "translated": "我倒了。救我。",
+      "reused_preview": true,
+      "end_to_text_ms": 1297,
+      "submit_to_text_ms": 1141
+    }
+  ],
+  "candidate_chinese_asr": [
+    {
+      "input": "敌人在右边。",
+      "recognized": "依院在右边",
+      "ms": 42
+    },
+    {
+      "input": "敌人在右边。",
+      "recognized": "依院在右边",
+      "ms": 34
+    },
+    {
+      "input": "我倒了，救我。",
+      "recognized": "我到给我",
+      "ms": 42
+    },
+    {
+      "input": "我倒了，救我。",
+      "recognized": "我到给我",
+      "ms": 35
+    },
+    {
+      "input": "没有敌人，别开枪。",
+      "recognized": "没有敌人别开枪",
+      "ms": 42
+    },
+    {
+      "input": "没有敌人，别开枪。",
+      "recognized": "没有敌人别开枪",
+      "ms": 38
+    }
+  ],
+  "known_failures": [
+    "Synthetic Chinese Enemy on the right and I am down help me are still misrecognized. The optional recognizer alone did not fix them; auto falls back to Whisper for unknown text.",
+    "Japanese and English CPU ASR still take roughly 0.8 seconds in the 8-thread short-fixture preset, excluding endpoint, synthesis and network latency."
+  ]
+}

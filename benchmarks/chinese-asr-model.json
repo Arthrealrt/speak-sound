@@ -1,0 +1,23 @@
+{
+  "repo": "csukuangfj/sherpa-onnx-zipformer-ctc-zh-int8-2025-07-03",
+  "revision": "824c678e9b80f301110e3ea8cee9819a7994c049",
+  "license": "Apache-2.0",
+  "license_confirmation": "https://github.com/k2-fsa/sherpa-onnx/issues/4065",
+  "files": [
+    {
+      "file": "model.int8.onnx",
+      "bytes": 367074356,
+      "sha256": "e291b9c468b651e2697caa09bc684326c3addc6a019e78eb537cfd1a8248ca07"
+    },
+    {
+      "file": "README.md",
+      "bytes": 203,
+      "sha256": "7f8203b54bca7cb48ba384a39fd2f4a2a6f1e1211ab9075256f180baf7fa92cc"
+    },
+    {
+      "file": "tokens.txt",
+      "bytes": 13366,
+      "sha256": "6fed8c6c248516f38e7faa19404b57413e8ce259f1cbc1fa4aebc86eac32fdfd"
+    }
+  ]
+}
